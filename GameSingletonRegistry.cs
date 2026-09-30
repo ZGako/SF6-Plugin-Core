@@ -1,7 +1,7 @@
 using System.Threading;
 
 
-namespace SF6_TMP.Core;
+namespace SF6_Plugin_Core;
 
 public static class GameSingletonRegistry
 {

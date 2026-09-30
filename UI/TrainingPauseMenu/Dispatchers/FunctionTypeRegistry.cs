@@ -1,8 +1,6 @@
 
 
-using via.dynamics;
-
-namespace SF6_TMP.Core.UI.TrainingPauseMenu.Dispatchers;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
 public static class FunctionTypeRegistry
 {

@@ -1,4 +1,4 @@
-namespace SF6_TMP.Core.UI.TrainingPauseMenu;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu;
 
 public interface IUIDynamicModifier
 {

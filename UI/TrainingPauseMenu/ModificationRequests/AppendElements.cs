@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 using via.gui;
 
-namespace SF6_TMP.Core.UI.TrainingPauseMenu.ModificationRequests;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.ModificationRequests;
 
 
 // TODO rewrite this whole thing to output a list of lists with the appended elements.

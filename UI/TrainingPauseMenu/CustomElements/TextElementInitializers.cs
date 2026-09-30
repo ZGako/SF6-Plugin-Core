@@ -1,4 +1,4 @@
-namespace SF6_TMP.Core.UI.TrainingPauseMenu.CustomElements;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
 public class RowButtonInitializer(CustomMessage message, CustomMessage guideMessage) : CustomElementBase(new CustomElementInitializer
 {

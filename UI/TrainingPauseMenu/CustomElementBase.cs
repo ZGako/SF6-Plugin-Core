@@ -2,7 +2,7 @@
 
 using app.network.api.Enum;
 
-namespace SF6_TMP.Core.UI.TrainingPauseMenu;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu;
 
 public class UICustomElementNode(string functionName, IUICustomElementInitialization customInitializer)
 {

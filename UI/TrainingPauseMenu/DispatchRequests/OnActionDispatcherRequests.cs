@@ -1,6 +1,6 @@
-using SF6_TMP.Core.UI.TrainingPauseMenu.Dispatchers;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
-namespace SF6_TMP.Core.UI.TrainingPauseMenu.DispatchRequests;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.DispatchRequests;
 
 public class FunctionDispatcherRequest(TrainingFunctionDispatcher.FunctionDelegate functionDelegate) : SingleUseModificationRequest, IUIDispatcherRequest
 {

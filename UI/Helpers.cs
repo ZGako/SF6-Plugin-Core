@@ -1,7 +1,7 @@
 // Core usings
-using SF6_TMP.Core.UI.TrainingPauseMenu.Dispatchers;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
-namespace SF6_TMP.Core.UI;
+namespace SF6_Plugin_Core.UI;
 
 /// <summary>
 /// A static class containing helper methods for UI-related operations.

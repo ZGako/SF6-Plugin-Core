@@ -1,6 +1,6 @@
 
 
-namespace SF6_TMP.Core.UI;
+namespace SF6_Plugin_Core.UI;
 
 public class CustomMessage
 {

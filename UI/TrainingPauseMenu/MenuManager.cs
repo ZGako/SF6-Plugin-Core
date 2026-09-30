@@ -1,10 +1,10 @@
 // Core usings
 
-using SF6_TMP.Core;
-using SF6_TMP.Core.UI.TrainingPauseMenu.Dispatchers;
-using SF6_TMP.Core.UI.TrainingPauseMenu.ModificationRequests;
+using SF6_Plugin_Core;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.ModificationRequests;
 
-namespace SF6_TMP.Core.UI.TrainingPauseMenu;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu;
 
 /// <summary>
 /// 
