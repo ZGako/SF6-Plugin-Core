@@ -25,13 +25,22 @@ public static class GameSingletonRegistry
 
     // Publicly accessible singleton instances
     public static app.training.TrainingManager? TrainingManager { get; private set; }
-
     public static app.UIAgentManager? UIAgentManager { get; private set; }
-
     public static app.UIPrefabManager? UIPrefabManager { get; private set; }
 
     private static readonly Dictionary<GameSingletonTypes, bool> SingletonReadyStates = [];
-    private static readonly Dictionary<GameSingletonTypes, Tuple<Func<bool>, Action, Action?>> RegisteredSingletons = [];
+
+    private class SingletonHooks
+    {
+        public Func<bool> CheckIfReady { get; set; } = () => false;
+        public List<Action> OnReady { get; } = [];
+        public List<Action> OnRelease { get; } = [];
+        // Indicates whether the singleton gets reloaded multiple times during the game session (e.g., TrainingManager can be released and re-initialized)
+        // if false, the action arrays will be cleared after being used
+        public bool MultipleCallsAllowed { get; set; } = false;
+    }
+
+    private static readonly Dictionary<GameSingletonTypes, SingletonHooks> RegisteredSingletons = [];
 
     [Callback(typeof(UpdateBehavior), CallbackType.Pre)]
     private static void OnUpdateBehaviorCallback()
@@ -46,16 +55,64 @@ public static class GameSingletonRegistry
                     continue; // Skip if already ready
                 }
 
-                if (RegisteredSingletons.TryGetValue(singletonType, out var actions))
+                if (RegisteredSingletons.TryGetValue(singletonType, out var hooks))
                 {
-                    var (checkIfReady, onReady, _) = actions;
-
-                    if (checkIfReady())
+                    if (hooks.CheckIfReady())
                     {
                         SingletonReadyStates[singletonType] = true;
-                        onReady.Invoke();
+
+                        // Fire all accumulated OnReady actions
+                        foreach (var action in hooks.OnReady)
+                        {
+                            action.Invoke();
+                        }
+
+                        if (!hooks.MultipleCallsAllowed)
+                        {
+                            hooks.OnReady.Clear();
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    private static void RegisterSingleton(
+         GameSingletonTypes type,
+         Func<bool> checkFunc,
+         bool multipleCallsAllowed,
+         Action onReady,
+         Action? onRelease)
+    {
+        lock (RegistryLock)
+        {
+            if (!RegisteredSingletons.TryGetValue(type, out var hooks))
+            {
+                hooks = new SingletonHooks { CheckIfReady = checkFunc, MultipleCallsAllowed = multipleCallsAllowed };
+                RegisteredSingletons[type] = hooks;
+            }
+
+            // If the singleton is already ready, fire the onReady callback immediately
+            if (SingletonReadyStates.TryGetValue(type, out bool isReady) && isReady)
+            {
+                onReady.Invoke();
+
+                // if the singleton allows multiple calls, we still add the callback to the list for future releases
+                if (hooks.MultipleCallsAllowed)
+                {
+                    hooks.OnReady.Add(onReady);
+                }
+            }
+            else
+            {
+                // Otherwise, queue it for the Update loop
+                hooks.OnReady.Add(onReady);
+            }
+
+            // Always queue the release callback
+            if (onRelease != null)
+            {
+                hooks.OnRelease.Add(onRelease);
             }
         }
     }
@@ -65,19 +122,15 @@ public static class GameSingletonRegistry
     /// </summary>
     public static void RegisterTrainingManager(Action onReady, Action? onRelease = null)
     {
-        lock (RegistryLock)
+        RegisterSingleton(GameSingletonTypes.TrainingManager, () =>
         {
-            RegisteredSingletons[GameSingletonTypes.TrainingManager] = new Tuple<Func<bool>, Action, Action?>(() =>
-            {
-                // Leveraging typed proxies for compile-time safety[cite: 4]
-                var tm = API.GetManagedSingletonT<app.training.TrainingManager>();
-                if (tm == null) return false;
-                if (!tm.IsInit) return false;
+            var tm = API.GetManagedSingletonT<app.training.TrainingManager>();
+            if (tm == null) return false;
+            if (!tm.IsInit) return false;
 
-                TrainingManager = tm;
-                return true;
-            }, onReady, onRelease);
-        }
+            TrainingManager = tm;
+            return true;
+        }, multipleCallsAllowed: true, onReady, onRelease);
     }
 
     [MethodHook(typeof(app.training.TrainingManager), "Release", MethodHookType.Pre)]
@@ -92,44 +145,45 @@ public static class GameSingletonRegistry
                 SingletonReadyStates[GameSingletonTypes.TrainingManager] = false;
                 TrainingManager = null;
 
-                if (RegisteredSingletons.TryGetValue(GameSingletonTypes.TrainingManager, out var actions))
+                if (RegisteredSingletons.TryGetValue(GameSingletonTypes.TrainingManager, out var hooks))
                 {
-                    var (_, _, onRelease) = actions;
-                    onRelease?.Invoke();
+                    foreach (var action in hooks.OnRelease)
+                    {
+                        action?.Invoke();
+                    }
+
+                    if (!hooks.MultipleCallsAllowed)
+                    {
+                        hooks.OnRelease.Clear();
+                    }
                 }
             }
         }
         return PreHookResult.Continue;
     }
 
-    public static void RegisterUIAgentManager(Action onReady, Action? onRelease = null)
+    public static void RegisterUIAgentManager(Action onReady)
     {
-        lock (RegistryLock)
+        RegisterSingleton(GameSingletonTypes.UIAgentManager, () =>
         {
-            RegisteredSingletons[GameSingletonTypes.UIAgentManager] = new Tuple<Func<bool>, Action, Action?>(() =>
-            {
-                var uiAgentManager = API.GetManagedSingletonT<app.UIAgentManager>();
-                if (uiAgentManager == null) return false;
+            var uiAgentManager = API.GetManagedSingletonT<app.UIAgentManager>();
+            if (uiAgentManager == null) return false;
 
-                UIAgentManager = uiAgentManager;
-                return true;
-            }, onReady, onRelease);
-        }
+            UIAgentManager = uiAgentManager;
+            return true;
+        }, multipleCallsAllowed: false, onReady, onRelease: null);
     }
 
-    public static void RegisterUIPrefabManager(Action onReady, Action? onRelease = null)
+    public static void RegisterUIPrefabManager(Action onReady)
     {
-        lock (RegistryLock)
+        RegisterSingleton(GameSingletonTypes.UIPrefabManager, () =>
         {
-            RegisteredSingletons[GameSingletonTypes.UIPrefabManager] = new Tuple<Func<bool>, Action, Action?>(() =>
-            {
-                var uiPrefabManager = API.GetManagedSingletonT<app.UIPrefabManager>();
-                if (uiPrefabManager == null) return false;
+            var uiPrefabManager = API.GetManagedSingletonT<app.UIPrefabManager>();
+            if (uiPrefabManager == null) return false;
 
-                UIPrefabManager = uiPrefabManager;
-                return true;
-            }, onReady, onRelease);
-        }
+            UIPrefabManager = uiPrefabManager;
+            return true;
+        }, multipleCallsAllowed: false, onReady, onRelease: null);
     }
 
     /// <summary>
