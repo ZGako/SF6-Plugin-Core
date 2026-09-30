@@ -5,6 +5,7 @@
     <RootNamespace>SF6_Plugin_Core</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>00_SF6PluginCore</AssemblyName>
   </PropertyGroup>
 
   <Choose>
@@ -18,9 +19,14 @@
         <LibsPath>..\libs</LibsPath>
       </PropertyGroup>
     </When>
+    <Otherwise>
+      <PropertyGroup>
+        <LibsPath></LibsPath>
+      </PropertyGroup>
+    </Otherwise>
   </Choose>
 
-  <ItemGroup>
+  <ItemGroup Condition=" '$(LibsPath)' != '' ">
     <Reference Include="REFramework.NET">
       <HintPath>$(LibsPath)\REFramework.NET.dll</HintPath>
     </Reference>
@@ -41,13 +47,9 @@
     </Reference>
   </ItemGroup>
 
-  <Target Condition=" '$(ProjectUsingCoreCsprojPath)' != '' " Name="BuildAndUpdateScript" AfterTargets="Build">
+  <Target Condition=" '$(SF6Dir)' != '' " Name="BuildAndUpdateScript" AfterTargets="Build">
 
-    <Message Importance="High" Text="Building and updating script..." />
-
-    <Copy Condition=" '$(SF6Dir)' != '' " SourceFiles="$(TargetPath)" DestinationFolder="$(SF6Dir)\reframework\plugins\managed\" />
-
-    <Exec Command="powershell -Command &quot;(Get-Item '$(ProjectUsingCoreCsprojPath)').LastWriteTime = Get-Date&quot;"/>
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SF6Dir)\reframework\plugins\managed\" />
 
   </Target>
 
