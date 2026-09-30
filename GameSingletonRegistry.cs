@@ -20,6 +20,9 @@ public static class GameSingletonRegistry
         TrainingManager,
         UIAgentManager,
         UIPrefabManager,
+        NetworkManager,
+        bFlowManager,
+        resourceManager, // technically not a singleton, but I'd like to have a callback to it
         // Add others here later
     }
 
@@ -27,6 +30,9 @@ public static class GameSingletonRegistry
     public static app.training.TrainingManager? TrainingManager { get; private set; }
     public static app.UIAgentManager? UIAgentManager { get; private set; }
     public static app.UIPrefabManager? UIPrefabManager { get; private set; }
+    public static app.network.NetworkManager? NetworkManager { get; private set; }
+    public static app.bFlowManager? BFlowManager { get; private set; }
+    public static ResourceManager? ResourceManager { get; private set; }
 
     private static readonly Dictionary<GameSingletonTypes, bool> SingletonReadyStates = [];
 
@@ -182,6 +188,42 @@ public static class GameSingletonRegistry
             if (uiPrefabManager == null) return false;
 
             UIPrefabManager = uiPrefabManager;
+            return true;
+        }, multipleCallsAllowed: false, onReady, onRelease: null);
+    }
+
+    public static void RegisterNetworkManager(Action onReady)
+    {
+        RegisterSingleton(GameSingletonTypes.NetworkManager, () =>
+        {
+            var networkManager = API.GetManagedSingletonT<app.network.NetworkManager>();
+            if (networkManager == null) return false;
+
+            NetworkManager = networkManager;
+            return true;
+        }, multipleCallsAllowed: false, onReady, onRelease: null);
+    }
+
+    public static void RegisterBFlowManager(Action onReady)
+    {
+        RegisterSingleton(GameSingletonTypes.bFlowManager, () =>
+        {
+            var bFlowManager = API.GetManagedSingletonT<app.bFlowManager>();
+            if (bFlowManager == null) return false;
+
+            BFlowManager = bFlowManager;
+            return true;
+        }, multipleCallsAllowed: false, onReady, onRelease: null);
+    }
+
+    public static void RegisterResourceManager(Action onReady)
+    {
+        RegisterSingleton(GameSingletonTypes.resourceManager, () =>
+        {
+            var resourceManager = API.GetResourceManager();
+            if (resourceManager == null) return false;
+
+            ResourceManager = resourceManager;
             return true;
         }, multipleCallsAllowed: false, onReady, onRelease: null);
     }

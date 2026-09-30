@@ -145,8 +145,15 @@ public static class PauseMenuManager
 
     private static readonly UICachedDataNode RootNode = new(null); // root node of the cached data tree
 
-    public static void RebuildUI()
+    private static readonly Lock ModificationLock = new();
+
+    private static void RebuildUI()
     {
+
+        if (!ModificationLock.IsHeldByCurrentThread)
+        {
+            throw new SynchronizationLockException("RebuildUI must be called within a modification batch (between BeginModificationBatch and EndModificationBatch).");
+        }
 
         // Clear the function type registry (the functionTypes we want them to be incremental values, so we clear them to refill them properly)
         // Messages are instead cleared by the ModificationRequests themselves, since they don't need to be refilled from scratch and thus rebuild each time the UI is rebuilt
@@ -264,6 +271,7 @@ public static class PauseMenuManager
                         currentNode.CachedElement.Release();
                         currentNode.CachedElement = null;
                         API.LogInfo($"Released cached element at node with {currentNode.Children.Count} children as it has no modifications.");
+                        continue;
                     }
 
                     var currentElement = currentElementMo.As<app.training.TrainingMenuData>();
@@ -343,6 +351,11 @@ public static class PauseMenuManager
     {
         // Add the modification request to the parent node's list
 
+        if (!ModificationLock.IsHeldByCurrentThread)
+        {
+            throw new SynchronizationLockException("RegisterModification must be called within a modification batch (between BeginModificationBatch and EndModificationBatch).");
+        }
+
         var currentNode = RootNode;
         var gameUIDataMo = GetUIDataMo();
 
@@ -352,6 +365,19 @@ public static class PauseMenuManager
             int index = traversalPath[i];
 
             var gameUIDataArray = gameUIDataMo?.As<_System.Array>() ?? throw new InvalidCastException("UIData is not a valid array. Cannot traverse.");
+
+            // get the cached node at the current index
+
+            // node should never be null here, but the compiler complains anyways
+            if (currentNode == null)
+                throw new InvalidOperationException($"Current node is null at index {index}. Cannot traverse further.");
+
+            UICachedDataNode? childNode = currentNode[index];
+            if (childNode == null)
+            {
+                childNode = new UICachedDataNode(null); // Replace with your actual variables
+                currentNode[index] = childNode;
+            }
 
             if (i == traversalPath.Count - 1)
             {
@@ -427,21 +453,8 @@ public static class PauseMenuManager
             }
 
             // get the UIData note
-            var nextElementMo = gameUIDataArray?.GetValue(index) as ManagedObject;
+            var nextElementMo = childNode.CachedElement ?? gameUIDataArray.GetValue(index) as ManagedObject;
             gameUIDataMo = (nextElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
-
-            // get the cached node at the current index
-
-            // node should never be null here, but the compiler complains anyways
-            if (currentNode == null)
-                throw new InvalidOperationException($"Current node is null at index {index}. Cannot traverse further.");
-
-            UICachedDataNode? childNode = currentNode[index];
-            if (childNode == null)
-            {
-                childNode = new UICachedDataNode(null); // Replace with your actual variables
-                currentNode[index] = childNode;
-            }
 
             currentNode = childNode;
         }
@@ -450,6 +463,10 @@ public static class PauseMenuManager
 
     public static void UnregisterModification(IUIModificationRequest modificationRequest)
     {
+        if (!ModificationLock.IsHeldByCurrentThread)
+        {
+            throw new SynchronizationLockException("UnregisterModification must be called within a modification batch (between BeginModificationBatch and EndModificationBatch).");
+        }
         // Remove the modification request from the parent node's list
         // TODO if the modification contrains a custom element creation request, unregister it as well
 
@@ -508,7 +525,13 @@ public static class PauseMenuManager
 
     }
 
-
-
+    public static void ModifyUI(Action modificationAction)
+    {
+        lock (ModificationLock)
+        {
+            modificationAction.Invoke();
+            RebuildUI();
+        }
+    }
 
 }
