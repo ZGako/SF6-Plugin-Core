@@ -49,7 +49,7 @@ public static class GameSingletonRegistry
     private static readonly Dictionary<GameSingletonTypes, SingletonHooks> RegisteredSingletons = [];
 
     [Callback(typeof(UpdateBehavior), CallbackType.Pre)]
-    private static void OnUpdateBehaviorCallback()
+    public static void OnUpdateBehaviorCallback()
     {
         // Safe iteration: We lock the registry while checking/updating states
         lock (RegistryLock)
