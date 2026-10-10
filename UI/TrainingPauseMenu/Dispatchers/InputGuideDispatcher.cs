@@ -1,7 +1,10 @@
 
 
+using SF6_Plugin_Core.Memory;
+
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
+//FIXME: refactor
 public static class InputGuideDispatcher
 {
 
@@ -68,7 +71,7 @@ public static class InputGuideDispatcher
 
 
     [MethodHook(typeof(app.training.TrainingManager), "GetGuideData(app.training.TrainingMenuData, System.Collections.Generic.List`1<app.InputGuideData>, System.Collections.Generic.List`1<System.String>)", MethodHookType.Pre)]
-    private static PreHookResult OnGetGuideDataPre(Span<ulong> args)
+    public static PreHookResult OnGetGuideDataPre(Span<ulong> args)
     {
 
         var currentMenuData = ManagedObject.ToManagedObject(args[2])?.As<app.training.TrainingMenuData>();
@@ -95,7 +98,7 @@ public static class InputGuideDispatcher
     }
 
     [MethodHook(typeof(app.training.TrainingManager), "GetGuideData(app.training.TrainingMenuData, System.Collections.Generic.List`1<app.InputGuideData>, System.Collections.Generic.List`1<System.String>)", MethodHookType.Post)]
-    private static void OnGetGuideDataPost(ref ulong retval)
+    public static void OnGetGuideDataPost(ref ulong retval)
     {
         if (s_pendingOutInputGuideDataListPtr == 0 || s_pendingOutStringListPtr == 0 || s_handledCustomFunction == 0)
         {
@@ -115,8 +118,8 @@ public static class InputGuideDispatcher
                 ulong dereferencedAddress1 = (ulong)Marshal.ReadInt64(new IntPtr((long)s_pendingOutInputGuideDataListPtr));
                 ulong dereferencedAddress2 = (ulong)Marshal.ReadInt64(new IntPtr((long)s_pendingOutStringListPtr));
 
-                var inputGuideDataList = UIHelpers.GetAddressAs<REFrameworkNET.Collections.IList<app.InputGuideData>>(dereferencedAddress1);
-                var outStringList = UIHelpers.GetAddressAs<REFrameworkNET.Collections.IList<string>>(dereferencedAddress2);
+                var inputGuideDataList = MemoryHelpers.GetAddressAs<REFrameworkNET.Collections.IList<app.InputGuideData>>(dereferencedAddress1);
+                var outStringList = MemoryHelpers.GetAddressAs<REFrameworkNET.Collections.IList<string>>(dereferencedAddress2);
 
                 action.Invoke(ref inputGuideDataList, ref outStringList);
             }

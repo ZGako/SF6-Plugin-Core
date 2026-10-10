@@ -45,6 +45,15 @@
     <Reference Include="REFramework.NET.viacore">
       <HintPath>$(LibsPath)\managed\generated\REFramework.NET.viacore.dll</HintPath>
     </Reference>
+    <Reference Include="application">
+    <HintPath>$(LibsPath)\managed\generated\REFramework.NET.application.dll</HintPath>
+    </Reference>
+    <Reference Include="Hexa.Net.ImGui">
+      <HintPath>$(LibsPath)\managed\dependencies\Hexa.Net.ImGui.dll</HintPath>
+    </Reference>
+    <Reference Include="HexaGen.Runtime">
+      <HintPath>$(LibsPath)\managed\dependencies\HexaGen.Runtime.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <Target Condition=" '$(SF6Dir)' != '' " Name="BuildAndUpdateScript" AfterTargets="Build">

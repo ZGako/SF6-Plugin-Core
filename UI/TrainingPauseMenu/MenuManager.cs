@@ -1,11 +1,13 @@
 // Core usings
 
 using SF6_Plugin_Core;
+using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.ModificationRequests;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu;
 
+//FIXME: refactor
 /// <summary>
 /// 
 /// </summary>
@@ -191,37 +193,7 @@ public static class PauseMenuManager
 
                     var typeDef = app.training.TrainingMenuData.REFType;
 
-                    ulong cachedAddress = currentNode.CachedElement.GetAddress();
-                    ulong targetAddress = currentElementMo.GetAddress();
-
-                    typeDef.GetFields().ForEach(field =>
-                    {
-                        if (field.IsStatic()) return;
-
-                        try
-                        {
-                            // API.LogInfo($"Copying field {field.Name}");
-                            if (field.Type.IsValueType())
-                            {
-                                uint size = field.Type.ValueTypeSize;
-                                byte[] buffer = new byte[size];
-                                Marshal.Copy((IntPtr)(cachedAddress + field.OffsetFromBase), buffer, 0, (int)size);
-                                Marshal.Copy(buffer, 0, (IntPtr)(targetAddress + field.OffsetFromBase), (int)size);
-
-                            }
-                            else
-                            {
-                                object value = field.GetDataBoxed(cachedAddress, false);
-                                field.SetDataBoxed(targetAddress, value, false);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-
-                            API.LogWarning($"Failed to copy field {field.Name}: {ex.Message}");
-
-                        }
-                    });
+                    currentElementMo.CopyFieldsFrom(currentNode.CachedElement, typeDef);
 
                     childArrayMo = (currentElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
                 }
@@ -397,37 +369,7 @@ public static class PauseMenuManager
                     ManagedObject originalElementMo = gameUIDataArray.GetValue(index) as ManagedObject
                     ?? throw new InvalidOperationException($"Element at index {index} is null or not a ManagedObject. Cannot copy fields.");
 
-                    ulong originalAddress = originalElementMo.GetAddress();
-                    ulong copyAddress = elementCopyMo.GetAddress();
-
-                    typeDef.GetFields().ForEach(field =>
-                    {
-                        if (field.IsStatic()) return;
-
-                        try
-                        {
-                            // API.LogInfo($"Copying field {field.Name}");
-                            if (field.Type.IsValueType())
-                            {
-                                uint size = field.Type.ValueTypeSize;
-                                byte[] buffer = new byte[size];
-                                Marshal.Copy((IntPtr)(originalAddress + field.OffsetFromBase), buffer, 0, (int)size);
-                                Marshal.Copy(buffer, 0, (IntPtr)(copyAddress + field.OffsetFromBase), (int)size);
-
-                            }
-                            else
-                            {
-                                object value = field.GetDataBoxed(originalAddress, false);
-                                field.SetDataBoxed(copyAddress, value, false);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-
-                            API.LogWarning($"Failed to copy field {field.Name}: {ex.Message}");
-
-                        }
-                    });
+                    elementCopyMo.CopyFieldsFrom(originalElementMo, typeDef);
 
                     // store the copied element in the cached node
                     currentNode[index]!.CachedElement = elementCopyMo;

@@ -1,7 +1,10 @@
 
 
+using SF6_Plugin_Core.Memory;
+
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
+//FIXME: refactor
 public static class TrainingFunctionDispatcher
 {
     // A dictionary mapping our custom FuncType integers to C# lambdas
@@ -44,7 +47,7 @@ public static class TrainingFunctionDispatcher
     private static bool s_handledCustomFunction;
 
     [MethodHook(typeof(app.training.TrainingMenuFunc), "Function", MethodHookType.Pre)]
-    private static PreHookResult OnFunctionPre(Span<ulong> args)
+    public static PreHookResult OnFunctionPre(Span<ulong> args)
     {
         // FuncType argument
         int funcType = (int)args[2];
@@ -59,8 +62,8 @@ public static class TrainingFunctionDispatcher
         if (CustomFunctions.TryGetValue(functionName!, out FunctionDelegate? action))
         {
 
-            var baseParam = UIHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
-            var viewData = UIHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
+            var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
+            var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
 
             if (baseParam == null || viewData == null)
             {
@@ -81,7 +84,7 @@ public static class TrainingFunctionDispatcher
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc), "Function", MethodHookType.Post)]
-    private static void OnFunctionPost(ref ulong retval)
+    public static void OnFunctionPost(ref ulong retval)
     {
         if (s_handledCustomFunction)
         {
@@ -142,7 +145,7 @@ public static class TrainingFunctionDispatcher
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc), "OptionSelectFunction(app.training.TrainingFuncType, app.training.BaseParam, app.training.UIFlowTrainingMenu.Param.ViewData, System.Int32)", MethodHookType.Pre)]
-    private static PreHookResult OnOptionSelectFunctionPre(Span<ulong> args)
+    public static PreHookResult OnOptionSelectFunctionPre(Span<ulong> args)
     {
         // FuncType argument
         int funcType = (int)args[2];
@@ -159,8 +162,8 @@ public static class TrainingFunctionDispatcher
             {
                 int rowIndex = (int)args[5];
 
-                var baseParam = UIHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
-                var viewData = UIHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
+                var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
+                var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
 
                 // Invoke function
                 action!.Invoke(baseParam, viewData, rowIndex);
@@ -183,7 +186,7 @@ public static class TrainingFunctionDispatcher
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc), "OptionSelectFunction(app.training.TrainingFuncType, app.training.BaseParam, app.training.UIFlowTrainingMenu.Param.ViewData, System.Int32)", MethodHookType.Post)]
-    private static void OnOptionSelectFunctionPost(ref ulong retval)
+    public static void OnOptionSelectFunctionPost(ref ulong retval)
     {
         if (s_handledCustomOptionSelectFunction)
         {

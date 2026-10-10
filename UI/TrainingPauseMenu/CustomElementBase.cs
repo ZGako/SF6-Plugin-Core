@@ -4,6 +4,7 @@ using app.network.api.Enum;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu;
 
+//FIXME: refactor
 public class UICustomElementNode(string functionName, IUICustomElementInitialization customInitializer)
 {
     private readonly string _functionName = functionName;

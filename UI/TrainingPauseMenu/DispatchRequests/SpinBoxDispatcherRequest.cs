@@ -4,6 +4,7 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.DispatchRequests;
 
+//FIXME: refactor
 public class SpinBoxDispatcherRequest(SpinBoxDispatcher.SpinBoxInitDelegate action) : SingleUseModificationRequest, IUIDispatcherRequest
 {
     private readonly SpinBoxDispatcher.SpinBoxInitDelegate _action = action;

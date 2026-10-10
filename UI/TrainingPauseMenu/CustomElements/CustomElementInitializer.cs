@@ -1,8 +1,10 @@
 
+using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
+//FIXME: refactor
 public abstract class CustomElementBase(CustomElementBase.CustomElementInitializer initializer) : IUICustomElementInitialization
 {
     protected class CustomElementInitializer : IUICustomElementInitialization
@@ -56,26 +58,26 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
 
             if (MessageID != null)
             {
-                MessageManager.SetGuid(newElementMo, "_MessageID", MessageID.Id);
+                newElementMo.SetGuidField("_MessageID", MessageID.Id);
             }
 
             if (SubMessageID != null)
             {
-                MessageManager.SetGuid(newElementMo, "_SubMessageID", SubMessageID.Id);
+                newElementMo.SetGuidField("_SubMessageID", SubMessageID.Id);
             }
 
             if (GuideMessage != null)
             {
-                MessageManager.SetGuid(newElementMo, "_GuideMessage", GuideMessage.Id);
+                newElementMo.SetGuidField("_GuideMessage", GuideMessage.Id);
             }
 
             if (GuideMessageID != null)
             {
-                MessageManager.SetGuid(newElementMo, "_GuideMessageID", GuideMessageID.Id);
+                newElementMo.SetGuidField("_GuideMessageID", GuideMessageID.Id);
             }
             if (EndWordsGuid != null)
             {
-                MessageManager.SetGuid(newElementMo, "_EndWordsGuid", EndWordsGuid.Id);
+                newElementMo.SetGuidField("_EndWordsGuid", EndWordsGuid.Id);
             }
 
             newElement.LimitValue.x = LimitValue.Item1;

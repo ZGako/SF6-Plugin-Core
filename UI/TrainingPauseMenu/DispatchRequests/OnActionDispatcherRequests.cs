@@ -2,6 +2,7 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.DispatchRequests;
 
+//FIXME: refactor
 public class FunctionDispatcherRequest(TrainingFunctionDispatcher.FunctionDelegate functionDelegate) : SingleUseModificationRequest, IUIDispatcherRequest
 {
     private readonly TrainingFunctionDispatcher.FunctionDelegate _functionDelegate = functionDelegate;

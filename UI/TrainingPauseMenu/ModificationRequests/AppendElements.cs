@@ -7,6 +7,7 @@ using via.gui;
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.ModificationRequests;
 
 
+//FIXME: refactor
 // TODO rewrite this whole thing to output a list of lists with the appended elements.
 // one other thing is to define a convention for saying "append first and append last", since those aren't necessarily
 // attached to the original array.

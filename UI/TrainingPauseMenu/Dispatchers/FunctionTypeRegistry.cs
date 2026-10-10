@@ -2,6 +2,7 @@
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
+//FIXME: refactor
 public static class FunctionTypeRegistry
 {
     // Store all new allocated functionTypes here

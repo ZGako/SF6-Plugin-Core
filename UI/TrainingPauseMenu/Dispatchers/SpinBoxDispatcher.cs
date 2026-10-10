@@ -2,6 +2,7 @@
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
+//FIXME: refactor
 // TODO change this dispatcher to consider the new implementation strategy
 // FIXME find a way to track the element indices that are being used (this is probably gonna require a modifier of some kind)
 // so actually this can get the FuncType through the viewlist[index].Data.FuncType, so I don't even need the location.
@@ -44,7 +45,7 @@ public static class SpinBoxDispatcher
     // FIXME eventually I'll have to relook at the whole caller function and indices thing which isn't very clear
     // but for now it's fine
     [MethodHook(typeof(app.training.UIFlowTrainingMenu.Param), "InitSpinBox(System.Int32)", MethodHookType.Pre)]
-    private static PreHookResult OnInitSpinBoxPre(Span<ulong> args)
+    public static PreHookResult OnInitSpinBoxPre(Span<ulong> args)
     {
         var currentObject = ManagedObject.ToManagedObject(args[1])?.As<app.training.UIFlowTrainingMenu.Param>();
 

@@ -2,6 +2,7 @@
 
 namespace SF6_Plugin_Core.UI;
 
+//FIXME: refactor
 public class CustomMessage
 {
     public Guid Id { get; }
@@ -64,31 +65,6 @@ public static class MessageManager
     [ThreadStatic]
     private static CustomMessage? s_pendingMessageOverride;
 
-    public static void SetGuid(ManagedObject obj, string fieldName, Guid guid)
-    {
-        // Get the field definition to find its memory offset
-        var typeDef = obj.GetTypeDefinition();
-        var field = typeDef.GetField(fieldName);
-
-        if (field == null)
-        {
-            API.LogWarning($"Field {fieldName} not found on {typeDef.FullName}");
-            return;
-        }
-
-        // Get the byte offset from the object's base address
-        uint offset = field.OffsetFromBase;
-
-        // Calculate the exact memory destination as an IntPtr
-        IntPtr destAddress = (IntPtr)(obj.GetAddress() + offset);
-
-        // Convert the standard C# Guid into a 16-byte array
-        byte[] guidBytes = guid.ToByteArray();
-
-        // Copy the bytes directly into the engine's memory
-        Marshal.Copy(guidBytes, 0, destAddress, 16);
-    }
-
     public static void RegisterCustomMessage(CustomMessage message)
     {
         if (!CustomMessages.ContainsKey(message.Id))
@@ -98,7 +74,7 @@ public static class MessageManager
     }
 
     [MethodHook(typeof(app.helper.hLocalize), "getMessage(System.Guid)", MethodHookType.Pre)]
-    private static PreHookResult ReplaceMessageQuery(Span<ulong> args)
+    public static PreHookResult ReplaceMessageQuery(Span<ulong> args)
     {
         // read argument
         IntPtr guidAddress = (IntPtr)args[1];
@@ -117,7 +93,7 @@ public static class MessageManager
     }
 
     [MethodHook(typeof(app.helper.hLocalize), "getMessage(System.Guid)", MethodHookType.Post)]
-    private static void ReplaceMessageResponse(ref ulong retval)
+    public static void ReplaceMessageResponse(ref ulong retval)
     {
         if (s_pendingMessageOverride != null)
         {

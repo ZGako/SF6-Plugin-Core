@@ -3,6 +3,7 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.DispatchRequests;
 
+//FIXME: refactor
 public class InputGuideDispatcherRequest(InputGuideDispatcher.InputGuideDelegate action) : SingleUseModificationRequest, IUIDispatcherRequest
 {
     private readonly InputGuideDispatcher.InputGuideDelegate _action = action;
