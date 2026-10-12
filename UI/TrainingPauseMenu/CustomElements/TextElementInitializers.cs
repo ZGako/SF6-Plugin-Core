@@ -1,3 +1,5 @@
+using SF6_Plugin_Core.UI.Localization;
+
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
 //FIXME: refactor

@@ -1,5 +1,6 @@
 
 using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.UI.Localization;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;

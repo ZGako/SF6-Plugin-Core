@@ -13,6 +13,7 @@ public static class GameSingletonRegistry
         NetworkManager,
         bFlowManager,
         ResourceManager, // technically not a singleton, but I'd like to have a callback to it
+        GuiManager,
         // Add others here later
     }
 
@@ -46,6 +47,11 @@ public static class GameSingletonRegistry
     /// Gets the current <see cref="ResourceManager"/> instance, or <see langword="null"/> when it is unavailable.
     /// </summary>
     public static ResourceManager? ResourceManager { get; private set; }
+
+    /// <summary>
+    /// Gets the current <see cref="GuiManager"/> instance, or <see langword="null"/> when it is unavailable.
+    /// </summary>
+    public static app.GuiManager? GuiManager { get; private set; }
 
     private static readonly ConcurrentDictionary<GameSingletonTypes, bool> SingletonReadyStates = [];
 
@@ -176,7 +182,6 @@ public static class GameSingletonRegistry
     {
         if (SingletonReadyStates.TryGetValue(GameSingletonTypes.TrainingManager, out bool isReady) && isReady)
         {
-            API.LogInfo("TrainingManager released. Cleaning up mod state...");
             SingletonReadyStates[GameSingletonTypes.TrainingManager] = false;
             TrainingManager = null;
 
@@ -268,6 +273,22 @@ public static class GameSingletonRegistry
         }, multipleCallsAllowed: false, onReady, onRelease: null);
     }
 
+    /// <summary>
+    /// Registers a callback to run when <see cref="GuiManager"/> becomes available.
+    /// </summary>
+    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    public static void RegisterGuiManager(Action onReady)
+    {
+        RegisterSingleton(GameSingletonTypes.GuiManager, () =>
+        {
+            var guiManager = API.GetManagedSingletonT<app.GuiManager>();
+            if (guiManager == null) return false;
+
+            GuiManager = guiManager;
+            return true;
+        }, multipleCallsAllowed: false, onReady, onRelease: null);
+    }
+
     internal static void Clear()
     {
         SingletonReadyStates.Clear();
@@ -278,5 +299,6 @@ public static class GameSingletonRegistry
         NetworkManager = null;
         BFlowManager = null;
         ResourceManager = null;
+        GuiManager = null;
     }
 }

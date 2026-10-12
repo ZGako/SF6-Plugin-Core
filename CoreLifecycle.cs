@@ -8,7 +8,9 @@ global using REFrameworkNET;
 global using REFrameworkNET.Attributes;
 global using REFrameworkNET.Collections;
 global using REFrameworkNET.Callbacks;
+
 using SF6_Plugin_Core.Services;
+using SF6_Plugin_Core.UI;
 
 namespace SF6_Plugin_Core;
 
@@ -26,8 +28,7 @@ public static class CoreLifecycle
 
         GameSingletonRegistry.Clear();
         FlowTransitionDispatcher.ClearAllRegisteredFlowTransitions();
-
-
+        BattleHudDispatcher.ClearAllRegisteredBattleHudCallbacks();
+        RequestQueuePoller.Clear();
     }
-
 }

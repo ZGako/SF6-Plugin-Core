@@ -242,7 +242,7 @@ public static class PauseMenuManager
                         // Release logic
                         currentNode.CachedElement.Release();
                         currentNode.CachedElement = null;
-                        API.LogInfo($"Released cached element at node with {currentNode.Children.Count} children as it has no modifications.");
+                        // API.LogInfo($"Released cached element at node with {currentNode.Children.Count} children as it has no modifications.");
                         continue;
                     }
 
