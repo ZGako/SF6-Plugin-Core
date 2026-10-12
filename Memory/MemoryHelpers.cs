@@ -5,7 +5,7 @@ namespace SF6_Plugin_Core.Memory;
 public static class MemoryHelpers
 {
     /// <summary>
-    /// Attempts to retrieve a managed object of type T from a given memory address.
+    /// Attempts to retrieve a managed proxy of type T from a given memory address associated with a ManagedObject.
     /// </summary>
     /// <typeparam name="T"></typeparam>
     /// <param name="address"></param>
@@ -55,6 +55,40 @@ public static class MemoryHelpers
             RequestedType = (typeof(T).GetField("REFType", flags)?.GetValue(null)
                           ?? typeof(T).GetProperty("REFType", flags)?.GetValue(null)) as TypeDefinition;
         }
+    }
+
+    /// <summary>
+    /// Attempts to retrieve a managed proxy of type T from a given object, which is expected to be a ManagedObject.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="obj"></param>
+    /// <param name="exceptionMessage">Message to display in case of an exception.</param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="InvalidCastException"></exception>
+    public static T GetObjectAs<T>(this object obj, string? exceptionMessage = null) where T : class
+    {
+        var managedObj = obj as ManagedObject ?? throw new ArgumentException(exceptionMessage ?? "Object is not a ManagedObject or is null.");
+        var actualType = managedObj.GetTypeDefinition();
+
+        // FAST PATH: Reads the instantly accessible cached variable from our nested class
+        var requestedType = TypeDefCache<T>.RequestedType;
+
+        if (actualType != null && requestedType != null)
+        {
+            if (!actualType.IsDerivedFrom(requestedType))
+            {
+                throw new InvalidCastException(exceptionMessage ??
+                    $"Strict Cast Failed: Object at address {managedObj.GetAddress()} is of type '{actualType.FullName}', " +
+                    $"which does not match or derive from the requested type '{requestedType.FullName}'.");
+            }
+        }
+        else
+        {
+            // API.LogWarning($"Type definitions missing for strict validation on {address}. Proceeding with blind cast.");
+        }
+
+        return managedObj.As<T>() ?? throw new InvalidCastException(exceptionMessage ?? $"Proxy creation failed for object at address {managedObj.GetAddress()}.");
     }
 
     /// <summary>

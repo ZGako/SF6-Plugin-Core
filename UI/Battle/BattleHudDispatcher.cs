@@ -1,6 +1,5 @@
 
 
-using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.Services;
 
 namespace SF6_Plugin_Core.UI;
@@ -33,7 +32,9 @@ public static class BattleHudDispatcher
             return;
         }
 
-        if (battleHudManager.State == app.HudManagerBase.ManagerState.LOADING || battleHudManager.State == app.HudManagerBase.ManagerState.ACTIVATE)
+        if (battleHudManager.State == app.HudManagerBase.ManagerState.LOADING ||
+            battleHudManager.State == app.HudManagerBase.ManagerState.ACTIVATE ||
+            battleHudManager.State == app.HudManagerBase.ManagerState.DEACTIVATE)
         {
             onSetup?.Invoke(battleHudManager);
         }
@@ -98,9 +99,7 @@ public static class BattleHudDispatcher
         {
             return; // BattleHudManager is not ready yet, exit early
         }
-
         BattleHudSetupCallback?.Invoke(battleHudManager);
-
     }
 
 

@@ -1,4 +1,5 @@
 // Core usings
+using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.Localization;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
 
@@ -14,15 +15,12 @@ public static class UIHelpers
     public static ManagedObject GetGuiChild(via.gui.PlayObject parent, string childName)
     {
         var PlayObjectType = via.gui.PlayObject.REFType.RuntimeType;
-
-        var guiChildrenMo = (parent as IObject)?.Call("getChildren(System.Type)", PlayObjectType) as ManagedObject;
-
-        if (guiChildrenMo == null)
+        if ((parent as IObject) == null)
         {
-            throw new InvalidOperationException($"Failed to retrieve children for PlayObject '{parent}'.");
+            throw new ArgumentNullException(nameof(parent), "Parent PlayObject cannot be null.");
         }
 
-        var guiChildrenArray = guiChildrenMo.As<_System.Array>();
+        var guiChildrenArray = (parent as IObject)!.Call("getChildren(System.Type)", PlayObjectType).GetObjectAs<_System.Array>($"Failed to retrieve children for PlayObject '{parent}'.");
         // don't bother checking for cast, as it should always work.
 
         foreach (var child in guiChildrenArray)
@@ -46,15 +44,12 @@ public static class UIHelpers
     {
         var SearchType = childType.RuntimeType;
 
-        var guiChildrenMo = (parent as IObject)?.Call("getChildren(System.Type)", SearchType) as ManagedObject;
-
-        if (guiChildrenMo == null)
+        if ((parent as IObject) == null)
         {
-            throw new InvalidOperationException($"Failed to retrieve children for PlayObject '{parent}'.");
+            throw new ArgumentNullException(nameof(parent), "Parent PlayObject cannot be null.");
         }
 
-        var guiChildrenArray = guiChildrenMo.As<_System.Array>();
-        // don't bother checking for cast, as it should always work.
+        var guiChildrenArray = (parent as IObject)!.Call("getChildren(System.Type)", SearchType).GetObjectAs<_System.Array>("Failed to retrieve children as _System.Array.");
 
         return guiChildrenArray;
     }
