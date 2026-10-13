@@ -1,10 +1,6 @@
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 //FIXME: refactor
-public interface IUIDynamicModifier
-{
-    void Restore();
-}
 
 public interface IUIModificationRequest
 {
@@ -22,7 +18,7 @@ public interface IUICustomElementInitialization
     public app.training.TrainingMenuData GetElementData();
 }
 
-public interface IUIDispatcherRequest : IUIModificationRequest
+public interface IUIHookRequest : IUIModificationRequest
 {
     void AddDispatcher(string functionName);
 
@@ -31,24 +27,24 @@ public interface IUIDispatcherRequest : IUIModificationRequest
 }
 
 
-public abstract class SingleUseModificationRequest : IUIModificationRequest
+public abstract class ExclusiveModificationRequest : IUIModificationRequest
 {
-    private bool _isConsumed = false;
+    private bool _isClaimed = false;
 
     public abstract IUIModificationRequest Clone();
 
-    public void Consume()
+    public void Claim()
     {
-        if (_isConsumed)
+        if (_isClaimed)
         {
             throw new InvalidOperationException("This modification request has already been consumed.");
         }
 
-        _isConsumed = true;
+        _isClaimed = true;
     }
 
-    public void Unconsume()
+    public void Release()
     {
-        _isConsumed = false;
+        _isClaimed = false;
     }
 }

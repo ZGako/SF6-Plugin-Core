@@ -3,7 +3,7 @@
 namespace SF6_Plugin_Core.Memory;
 
 
-public sealed class EngineStringPool : IDisposable
+public sealed class ManagedStringPool : IDisposable
 {
     private readonly Dictionary<string, SystemString> _pool = [];
 

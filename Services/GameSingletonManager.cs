@@ -3,7 +3,7 @@ namespace SF6_Plugin_Core.Services;
 /// <summary>
 /// Exposes the game's managed singletons and tracks their lifecycle readiness for mod integrations.
 /// </summary>
-public static class GameSingletonRegistry
+public static class GameSingletonManager
 {
     private enum GameSingletonTypes
     {

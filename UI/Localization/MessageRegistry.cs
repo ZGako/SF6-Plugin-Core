@@ -1,6 +1,6 @@
 namespace SF6_Plugin_Core.UI.Localization;
 
-public static class MessageManager
+public static class MessageRegistry
 {
 
     private static readonly Dictionary<Guid, CustomMessage> CustomMessages = [];

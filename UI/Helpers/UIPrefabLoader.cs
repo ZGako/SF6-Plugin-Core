@@ -1,11 +1,11 @@
 using SF6_Plugin_Core.Services;
 
-namespace SF6_Plugin_Core.UI;
+namespace SF6_Plugin_Core.UI.Helpers;
 
 /// <summary>
 /// Provides factory helpers for creating and materializing UI prefabs from a registered resource path.
 /// </summary>
-public static class UIPrefabFactory
+public static class UIPrefabLoader
 {
     /// <summary>
     /// Creates a live prefab instance from the specified resource path and returns the instantiated game object.
@@ -21,12 +21,12 @@ public static class UIPrefabFactory
     /// </exception>
     public static void CreateUIPrefab(string prefabPath, Action<ManagedObject> onPrefabCreated)
     {
-        if (GameSingletonRegistry.ResourceManager == null)
+        if (GameSingletonManager.ResourceManager == null)
         {
             throw new InvalidOperationException("UIPrefabManager is not available. Ensure it is initialized before creating UI prefabs.");
         }
 
-        var prefabRes = GameSingletonRegistry.ResourceManager.CreateResource("via.PrefabResource", prefabPath);
+        var prefabRes = GameSingletonManager.ResourceManager.CreateResource("via.PrefabResource", prefabPath);
         if (prefabRes == null)
         {
             throw new InvalidOperationException($"Failed to create prefab resource from path: {prefabPath}");
@@ -51,7 +51,7 @@ public static class UIPrefabFactory
         }
         prefab.Path = prefabHolder.ResourcePath;
 
-        RequestQueuePoller.WaitUntil(
+        FrameCallbackPoller.WaitUntil(
             condition: () => prefab.Ready,
             onReady: () =>
             {

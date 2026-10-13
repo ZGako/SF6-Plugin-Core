@@ -1,11 +1,9 @@
 // Core usings
 
-using SF6_Plugin_Core;
 using SF6_Plugin_Core.Memory;
-using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
-using SF6_Plugin_Core.UI.TrainingPauseMenu.ModificationRequests;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 //FIXME: refactor
 /// <summary>
@@ -34,11 +32,11 @@ public static class PauseMenuManager
 
         public ReorderRequest? ReorderRequest { get; private set; } = null; // optional reorder request
 
-        private List<AppendElements> AppendRequests { get; } = []; // list of append requests
-        public System.Collections.Generic.IReadOnlyList<AppendElements> Appends => AppendRequests;
+        private List<AppendElementsRequest> AppendRequests { get; } = []; // list of append requests
+        public System.Collections.Generic.IReadOnlyList<AppendElementsRequest> Appends => AppendRequests;
 
-        private List<IUIDispatcherRequest> DispatcherRequests { get; } = []; // list of dispatcher requests
-        public System.Collections.Generic.IReadOnlyList<IUIDispatcherRequest> Dispatchers => DispatcherRequests;
+        private List<IUIHookRequest> DispatcherRequests { get; } = []; // list of dispatcher requests
+        public System.Collections.Generic.IReadOnlyList<IUIHookRequest> Dispatchers => DispatcherRequests;
 
         public UICachedDataNode? this[int index]
         {
@@ -84,19 +82,19 @@ public static class PauseMenuManager
             ReorderRequest = null;
         }
 
-        public bool RequestAppend(AppendElements appendRequest)
+        public bool RequestAppend(AppendElementsRequest appendRequest)
         {
             AppendRequests.Add(appendRequest);
             return true;
         }
 
-        public void ClearAppendRequest(AppendElements appendRequest)
+        public void ClearAppendRequest(AppendElementsRequest appendRequest)
         {
             appendRequest.Reset();
             AppendRequests.Remove(appendRequest);
         }
 
-        public bool RequestDispatcher(IUIDispatcherRequest dispatcherRequest)
+        public bool RequestDispatcher(IUIHookRequest dispatcherRequest)
         {
             Type incomingType = dispatcherRequest.GetType();
             bool hasSameDispatcherClass = DispatcherRequests.Any(r => r.GetType() == incomingType);
@@ -111,36 +109,11 @@ public static class PauseMenuManager
             return true;
         }
 
-        public void ClearDispatcherRequest(IUIDispatcherRequest dispatcherRequest)
+        public void ClearDispatcherRequest(IUIHookRequest dispatcherRequest)
         {
             dispatcherRequest.ClearDispatcher(); // Clear the dispatcher before removal
             DispatcherRequests.Remove(dispatcherRequest);
         }
-    }
-
-    public class ReorderRequest(List<int> newOrder) : IUIModificationRequest
-    {
-        private List<int> NewOrder { get; init; } = newOrder;
-
-        public int GetMapping(int originalIndex)
-        {
-            return originalIndex < 0 || originalIndex >= NewOrder.Count
-                ? throw new ArgumentOutOfRangeException(nameof(originalIndex), $"Original index {originalIndex} is out of bounds for the new order list.")
-                : NewOrder[originalIndex];
-        }
-
-        public int GetInverseMapping(int index)
-        {
-            return index < 0 || index >= NewOrder.Count
-                ? throw new ArgumentOutOfRangeException(nameof(index), $"Index {index} is out of bounds for the new order list.")
-                : NewOrder.IndexOf(index);
-        }
-
-        public IUIModificationRequest Clone()
-        {
-            return new ReorderRequest([.. NewOrder]);
-        }
-
     }
 
     private static readonly Dictionary<IUIModificationRequest, List<int>> ModificationRequestPaths = []; // maps modification requests to their traversal paths in the cached data tree
@@ -378,16 +351,16 @@ public static class PauseMenuManager
                 bool success = modificationRequest switch
                 {
                     ReorderRequest reorderRequest => currentNode[index]!.RequestReorder(reorderRequest),
-                    AppendElements appendRequest => currentNode[index]!.RequestAppend(appendRequest),
-                    IUIDispatcherRequest dispatcherRequest => currentNode[index]!.RequestDispatcher(dispatcherRequest),
+                    AppendElementsRequest appendRequest => currentNode[index]!.RequestAppend(appendRequest),
+                    IUIHookRequest dispatcherRequest => currentNode[index]!.RequestDispatcher(dispatcherRequest),
                     _ => throw new InvalidOperationException($"Unknown modification request type: {modificationRequest.GetType().Name}")
                 };
                 if (success)
                 {
                     ModificationRequestPaths[modificationRequest] = traversalPath;
-                    if (modificationRequest is SingleUseModificationRequest singleUseRequest)
+                    if (modificationRequest is ExclusiveModificationRequest singleUseRequest)
                     {
-                        singleUseRequest.Consume();
+                        singleUseRequest.Claim();
                     }
                 }
                 else API.LogWarning($"Modification request of type {modificationRequest.GetType().Name} is already registered at index {index}. Cannot register again.");
@@ -418,9 +391,9 @@ public static class PauseMenuManager
             return;
         }
 
-        if (modificationRequest is SingleUseModificationRequest singleUseRequest)
+        if (modificationRequest is ExclusiveModificationRequest singleUseRequest)
         {
-            singleUseRequest.Unconsume();
+            singleUseRequest.Release();
         }
 
         // traverse the cached tree to find the modification request and remove it
@@ -442,10 +415,10 @@ public static class PauseMenuManager
                     case ReorderRequest _:
                         currentNode[index]!.ClearReorderRequest();
                         break;
-                    case AppendElements appendRequest:
+                    case AppendElementsRequest appendRequest:
                         currentNode[index]!.ClearAppendRequest(appendRequest);
                         break;
-                    case IUIDispatcherRequest dispatcherRequest:
+                    case IUIHookRequest dispatcherRequest:
                         currentNode[index]!.ClearDispatcherRequest(dispatcherRequest);
                         break;
                     default:

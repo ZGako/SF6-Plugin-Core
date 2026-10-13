@@ -1,12 +1,14 @@
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 //FIXME: refactor
 // TODO change this dispatcher to consider the new implementation strategy
 // FIXME find a way to track the element indices that are being used (this is probably gonna require a modifier of some kind)
 // so actually this can get the FuncType through the viewlist[index].Data.FuncType, so I don't even need the location.
-public static class SpinBoxDispatcher
+
+//TODO: check if maybe I should call it SpinBoxInitHook or something like that instead? Who knows
+public static class SpinBoxHook
 {
 
     /// <summary>

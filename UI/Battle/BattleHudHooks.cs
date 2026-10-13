@@ -4,7 +4,7 @@ using SF6_Plugin_Core.Services;
 
 namespace SF6_Plugin_Core.UI;
 
-public static class BattleHudDispatcher
+public static class BattleHudHooks
 {
     public delegate void BattleHudStatusDelegate(app.BattleHudManager battleHudManager);
 
@@ -18,12 +18,12 @@ public static class BattleHudDispatcher
         BattleHudSetupCallback += onSetup;
         BattleHudUnloadCallback += onUnload;
 
-        if (GameSingletonRegistry.GuiManager == null)
+        if (GameSingletonManager.GuiManager == null)
         {
             return; // GuiManager is not ready yet, exit early
         }
 
-        var battleHudAsBase = GameSingletonRegistry.GuiManager.Hud.mHudManagerList[0];
+        var battleHudAsBase = GameSingletonManager.GuiManager.Hud.mHudManagerList[0];
         var battleHudManager = ManagedProxy<app.BattleHudManager>.Create(battleHudAsBase);
 
         // if casting failed
@@ -45,12 +45,12 @@ public static class BattleHudDispatcher
         BattleHudActivateCallback += onActivate;
         BattleHudDeactivateCallback += onDeactivate;
 
-        if (GameSingletonRegistry.GuiManager == null)
+        if (GameSingletonManager.GuiManager == null)
         {
             return; // GuiManager is not ready yet, exit early
         }
 
-        var battleHudAsBase = GameSingletonRegistry.GuiManager.Hud.mHudManagerList[0];
+        var battleHudAsBase = GameSingletonManager.GuiManager.Hud.mHudManagerList[0];
         var battleHudManager = ManagedProxy<app.BattleHudManager>.Create(battleHudAsBase);
 
         // if casting failed
@@ -81,12 +81,12 @@ public static class BattleHudDispatcher
             return; // No callbacks registered, exit early
         }
 
-        if (GameSingletonRegistry.GuiManager == null)
+        if (GameSingletonManager.GuiManager == null)
         {
             return; // GuiManager is not ready yet, exit early
         }
 
-        var battleHudAsBase = GameSingletonRegistry.GuiManager.Hud.mHudManagerList[0];
+        var battleHudAsBase = GameSingletonManager.GuiManager.Hud.mHudManagerList[0];
         var battleHudManager = ManagedProxy<app.BattleHudManager>.Create(battleHudAsBase);
 
         // if casting failed
@@ -111,12 +111,12 @@ public static class BattleHudDispatcher
             return; // No callbacks registered, exit early
         }
 
-        if (GameSingletonRegistry.GuiManager == null)
+        if (GameSingletonManager.GuiManager == null)
         {
             return; // GuiManager is not ready yet, exit early
         }
 
-        var battleHudAsBase = GameSingletonRegistry.GuiManager.Hud.mHudManagerList[0];
+        var battleHudAsBase = GameSingletonManager.GuiManager.Hud.mHudManagerList[0];
         var battleHudManager = ManagedProxy<app.BattleHudManager>.Create(battleHudAsBase);
 
         // if casting failed

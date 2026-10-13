@@ -26,9 +26,9 @@ public static class CoreLifecycle
 
         OnCoreUnloading = null;
 
-        GameSingletonRegistry.Clear();
-        FlowTransitionDispatcher.ClearAllRegisteredFlowTransitions();
-        BattleHudDispatcher.ClearAllRegisteredBattleHudCallbacks();
-        RequestQueuePoller.Clear();
+        GameSingletonManager.Clear();
+        BFlowHooks.ClearAllRegisteredFlowTransitions();
+        BattleHudHooks.ClearAllRegisteredBattleHudCallbacks();
+        FrameCallbackPoller.Clear();
     }
 }

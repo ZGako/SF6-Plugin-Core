@@ -1,8 +1,9 @@
 
 
 using app.network.api.Enum;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
 //FIXME: refactor
 public class UICustomElementNode(string functionName, IUICustomElementInitialization customInitializer)
@@ -10,9 +11,9 @@ public class UICustomElementNode(string functionName, IUICustomElementInitializa
     private readonly string _functionName = functionName;
     private readonly IUICustomElementInitialization _customInitializer = customInitializer;
 
-    private readonly List<IUIDispatcherRequest> _dispatcherInstructions = [];
+    private readonly List<IUIHookRequest> _dispatcherInstructions = [];
 
-    public bool AddDispatcher(IUIDispatcherRequest dispatcherRequest)
+    public bool AddDispatcher(IUIHookRequest dispatcherRequest)
     {
         Type incomingType = dispatcherRequest.GetType();
         bool hasSameDispatcherClass = _dispatcherInstructions.Any(r => r.GetType() == incomingType);
@@ -27,7 +28,7 @@ public class UICustomElementNode(string functionName, IUICustomElementInitializa
         return true;
     }
 
-    public void RemoveDispatcher(IUIDispatcherRequest dispatcherRequest)
+    public void RemoveDispatcher(IUIHookRequest dispatcherRequest)
     {
         _dispatcherInstructions.Remove(dispatcherRequest);
     }

@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace SF6_Plugin_Core.Services;
 
-public static class RequestQueuePoller
+public static class FrameCallbackPoller
 {
     private readonly record struct PollJob(
         Func<bool> Condition,

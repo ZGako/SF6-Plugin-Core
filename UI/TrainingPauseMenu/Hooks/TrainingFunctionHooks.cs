@@ -1,11 +1,10 @@
-
-
 using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 //FIXME: refactor
-public static class TrainingFunctionDispatcher
+public static class TrainingFunctionHooks
 {
     // A dictionary mapping our custom FuncType integers to C# lambdas
     private static readonly Dictionary<string, FunctionDelegate> CustomFunctions = [];

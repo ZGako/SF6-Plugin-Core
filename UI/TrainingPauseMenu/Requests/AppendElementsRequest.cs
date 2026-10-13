@@ -1,10 +1,11 @@
 
 
 using System.Diagnostics;
-
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 using via.gui;
 
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu.ModificationRequests;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
 
 //FIXME: refactor
@@ -18,7 +19,7 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.ModificationRequests;
 /// <param name="newElements">This parameter contains the list of new elements to append with the index of the element they'll attach to.
 /// <para>FOR THIS SPECIFIC CASE</para> we use indexing starting from 1. So if you put 0, you want the element at the top of the page. 
 /// -1 is the convetion for "add to the end" </param>
-public class AppendElements(List<(int, UICustomElementNode)> newElements) : SingleUseModificationRequest
+public class AppendElementsRequest(List<(int, UICustomElementNode)> newElements) : ExclusiveModificationRequest
 {
 
     // sort the new elements by their order index
@@ -53,9 +54,9 @@ public class AppendElements(List<(int, UICustomElementNode)> newElements) : Sing
         }
     }
 
-    public override AppendElements Clone()
+    public override AppendElementsRequest Clone()
     {
         var clonedElements = NewElements.Select(e => (e.Item1, e.Item2)).ToList();
-        return new AppendElements(clonedElements);
+        return new AppendElementsRequest(clonedElements);
     }
 }

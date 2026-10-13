@@ -1,11 +1,14 @@
 // Core usings
 using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.Localization;
-using SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
-namespace SF6_Plugin_Core.UI;
+namespace SF6_Plugin_Core.UI.Helpers;
 
 //FIXME: refactor
+// TODO: change the PlayObject functions to extensions
+
 /// <summary>
 /// A static class containing helper methods for UI-related operations.
 /// </summary>
@@ -61,10 +64,10 @@ public static class UIHelpers
     public static void ClearTrainingPauseMenuDispatchers()
     {
         // Clear all registered custom function types and their associated delegates
-        MessageManager.Clear();
+        MessageRegistry.Clear();
         FunctionTypeRegistry.Clear();
-        TrainingFunctionDispatcher.Clear();
-        SpinBoxDispatcher.Clear();
-        InputGuideDispatcher.Clear();
+        TrainingFunctionHooks.Clear();
+        SpinBoxHook.Clear();
+        InputGuideHook.Clear();
     }
 }

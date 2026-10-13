@@ -17,7 +17,7 @@ public class CustomMessage
         // Fill the array with the fallback text so missing translations don't show up blank
         Array.Fill(_translations, englishFallback);
 
-        MessageManager.RegisterCustomMessage(this);
+        MessageRegistry.RegisterCustomMessage(this);
     }
 
     // Builder pattern method to easily chain translations in your init phase

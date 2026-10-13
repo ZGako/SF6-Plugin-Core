@@ -3,7 +3,7 @@ namespace SF6_Plugin_Core.Services;
 /// <summary>
 /// Dispatches flow transition notifications to registered callbacks and game-mode handlers.
 /// </summary>
-public static class FlowTransitionDispatcher
+public static class BFlowHooks
 {
     /// <summary>
     /// Represents a callback invoked when a flow transition occurs.
@@ -22,12 +22,12 @@ public static class FlowTransitionDispatcher
     {
         FlowTransitionCallback += flowTransitionDelegate;
 
-        if (GameSingletonRegistry.BFlowManager == null)
+        if (GameSingletonManager.BFlowManager == null)
         {
             return; // BFlowManager is not ready yet, exit early
         }
         // invoke to make sure the callback is aware of the current flow work
-        flowTransitionDelegate?.Invoke(GameSingletonRegistry.BFlowManager.m_flow_work);
+        flowTransitionDelegate?.Invoke(GameSingletonManager.BFlowManager.m_flow_work);
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ public static class FlowTransitionDispatcher
             return; // No callbacks registered, exit early
         }
 
-        var flowWork = GameSingletonRegistry.BFlowManager!.m_flow_work;
+        var flowWork = GameSingletonManager.BFlowManager!.m_flow_work;
 
         var threadSafeCopy = FlowTransitionCallback; // Make a thread-safe copy of the delegate
         threadSafeCopy?.Invoke(flowWork);

@@ -1,11 +1,10 @@
-
-
 using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Dispatchers;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 //FIXME: refactor
-public static class InputGuideDispatcher
+public static class InputGuideHook
 {
 
     private static readonly Dictionary<string, InputGuideDelegate> CustomInputGuideDelegates = [];
