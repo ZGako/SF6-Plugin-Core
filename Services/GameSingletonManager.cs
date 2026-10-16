@@ -182,13 +182,13 @@ public static class GameSingletonManager
     {
         if (SingletonReadyStates.TryGetValue(GameSingletonTypes.TrainingManager, out bool isReady) && isReady)
         {
-            SingletonReadyStates[GameSingletonTypes.TrainingManager] = false;
-            TrainingManager = null;
-
             if (RegisteredSingletons.TryGetValue(GameSingletonTypes.TrainingManager, out var hooks))
             {
                 hooks.InvokeOnRelease();
             }
+
+            TrainingManager = null;
+            SingletonReadyStates[GameSingletonTypes.TrainingManager] = false;
         }
         return PreHookResult.Continue;
     }

@@ -2,7 +2,6 @@ using SF6_Plugin_Core.UI.Localization;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
-//FIXME: refactor
 public class RowButtonInitializer(CustomMessage message, CustomMessage guideMessage) : CustomElementBase(new CustomElementInitializer
 {
     Type = app.training.ItemType.TEXT_ONLY,

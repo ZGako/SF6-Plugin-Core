@@ -3,27 +3,22 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
-//FIXME: refactor
+
 public class SpinBoxHookRequest(SpinBoxHook.SpinBoxInitDelegate action) : ExclusiveModificationRequest, IUIHookRequest
 {
     private readonly SpinBoxHook.SpinBoxInitDelegate _action = action;
 
-    private string? _functionName;
+    private Guid _functionId;
 
-    public void AddDispatcher(string functionName)
+    public void AddHook(Guid functionId)
     {
-        _functionName = functionName;
-        SpinBoxHook.RegisterCustomSpinBoxInitialization(functionName, _action);
+        _functionId = functionId;
+        SpinBoxHook.RegisterCustomSpinBoxInitialization(functionId, _action);
     }
 
-    public void ClearDispatcher()
+    public void ClearHook()
     {
-        if (_functionName is null)
-        {
-            API.LogError("Cannot clear dispatcher because it was never added.");
-            throw new InvalidOperationException("Cannot clear dispatcher because it was never added.");
-        }
-        SpinBoxHook.UnregisterCustomSpinBoxInitialization(_functionName);
+        SpinBoxHook.UnregisterCustomSpinBoxInitialization(_functionId);
     }
 
     public override SpinBoxHookRequest Clone()

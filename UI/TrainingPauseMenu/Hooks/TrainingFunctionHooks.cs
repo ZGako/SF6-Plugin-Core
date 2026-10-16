@@ -3,47 +3,45 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
-//FIXME: refactor
+
 public static class TrainingFunctionHooks
 {
     // A dictionary mapping our custom FuncType integers to C# lambdas
-    private static readonly Dictionary<string, FunctionDelegate> CustomFunctions = [];
+    private static readonly ConcurrentDictionary<Guid, FunctionDelegate> CustomFunctions = [];
 
-    private static readonly Dictionary<string, FunctionDelegate> CustomOptionSelectFunctions = [];
+    private static readonly ConcurrentDictionary<Guid, FunctionDelegate> CustomOptionSelectFunctions = [];
 
-    // delegate type for all functions are the same signature
-    // TODO add a return value from the dispatcher that determines whether or not the menu should close. This would allow for more flexibility in custom functions.
-    public delegate void FunctionDelegate(app.training.BaseParam baseParam, app.training.UIFlowTrainingMenu.Param.ViewData viewData, int rowIndex);
+    private static readonly ConcurrentDictionary<Guid, FunctionDelegate> CustomOptionXFunctions = [];
+    private static readonly ConcurrentDictionary<Guid, FunctionDelegate> CustomOptionYFunctions = [];
+
+    // delegate type for all functions are the same signature. Return value signifies whether or not the menu should close after the function is executed.
+    public delegate bool FunctionDelegate(app.training.BaseParam baseParam, app.training.UIFlowTrainingMenu.Param.ViewData viewData, int rowIndex);
 
     // Function specific methods
 
-    public static void RegisterCustomFunction(string name, FunctionDelegate action)
+    internal static void RegisterCustomFunction(Guid id, FunctionDelegate action)
     {
 
-        if (FunctionTypeRegistry.TryGetFunctionType(name, out int _))
+        if (FunctionTypeRegistry.TryGetFunctionType(id, out int _))
         {
-            if (!CustomFunctions.TryAdd(name, action))
-            {
-                API.LogWarning($"Custom function '{name}' is already registered.");
-            }
+            CustomFunctions.TryAdd(id, action);
         }
         else
         {
-            API.LogError($"Custom function '{name}' is not registered. Call RegisterNewFunctionType first.");
+            throw new InvalidOperationException($"Custom function '{id}' is not registered. Call RegisterNewFunctionType first.");
         }
     }
 
-    public static void UnregisterCustomFunction(string name)
+    internal static void UnregisterCustomFunction(Guid id)
     {
-        // TODO double check if this all that is needed, I'm too tired to think right now.
-        if (!CustomFunctions.Remove(name))
-        {
-            API.LogWarning($"Custom function '{name}' was not registered or already unregistered.");
-        }
+        CustomFunctions.Remove(id, out FunctionDelegate? _);
     }
 
     [ThreadStatic]
     private static bool s_handledCustomFunction;
+
+    [ThreadStatic]
+    private static bool s_returnValueForCustomFunction;
 
     [MethodHook(typeof(app.training.TrainingMenuFunc), "Function", MethodHookType.Pre)]
     public static PreHookResult OnFunctionPre(Span<ulong> args)
@@ -51,14 +49,14 @@ public static class TrainingFunctionHooks
         // FuncType argument
         int funcType = (int)args[2];
 
-        if (funcType <= (int)app.training.TrainingFuncType.MAX) return PreHookResult.Continue;
+        if (funcType <= FunctionTypeRegistry.TrainingFuncTypeMax) return PreHookResult.Continue;
 
-        if (!FunctionTypeRegistry.TryGetFunctionName(funcType, out string? functionName))
+        if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out Guid functionId))
         {
             return PreHookResult.Continue;
         }
 
-        if (CustomFunctions.TryGetValue(functionName!, out FunctionDelegate? action))
+        if (CustomFunctions.TryGetValue(functionId, out FunctionDelegate? action))
         {
 
             var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
@@ -71,7 +69,7 @@ public static class TrainingFunctionHooks
             }
 
             // Invoke function
-            action.Invoke(baseParam, viewData, (int)args[5]);
+            s_returnValueForCustomFunction = action.Invoke(baseParam, viewData, (int)args[5]);
 
             s_handledCustomFunction = true;
 
@@ -88,7 +86,7 @@ public static class TrainingFunctionHooks
         if (s_handledCustomFunction)
         {
             // output is Boolean = true
-            retval = 0;
+            retval = s_returnValueForCustomFunction ? 1UL : 0UL;
 
             // Reset for the next call
             s_handledCustomFunction = false;
@@ -103,44 +101,26 @@ public static class TrainingFunctionHooks
     [ThreadStatic]
     private static bool s_handledCustomOptionSelectFunction;
 
-    public static void RegisterCustomOptionSelectFunction(string name, FunctionDelegate action)
+    [ThreadStatic]
+    private static bool s_returnValueForCustomOptionSelectFunction;
+
+    internal static void RegisterCustomOptionSelectFunction(Guid id, FunctionDelegate action)
     {
         // Generate a unique FuncType integer for this custom function
 
-        if (FunctionTypeRegistry.TryGetFunctionType(name, out int _))
+        if (FunctionTypeRegistry.TryGetFunctionType(id, out int _))
         {
-            if (!CustomOptionSelectFunctions.TryAdd(name, action))
-            {
-                API.LogWarning($"Custom option select function '{name}' is already registered.");
-            }
+            CustomOptionSelectFunctions.TryAdd(id, action);
         }
         else
         {
-            API.LogError($"Custom option select function '{name}' is not registered. Call RegisterNewFunctionType first.");
+            throw new InvalidOperationException($"Custom option select function '{id}' is not registered. Call RegisterNewFunctionType first.");
         }
     }
 
-    public static void RegisterCustomOptionSelectFunction(app.training.TrainingFuncType funcType, FunctionDelegate action)
+    internal static void UnregisterCustomOptionSelectFunction(Guid id)
     {
-        if (FunctionTypeRegistry.TryGetFunctionName((int)funcType, out string? name))
-        {
-            if (!CustomOptionSelectFunctions.TryAdd(name!, action))
-            {
-                API.LogWarning($"Custom option select function for FuncType '{funcType}' is already registered.");
-            }
-        }
-        else
-        {
-            API.LogError($"Game function type '{funcType}' is not registered. Call RegisterGameFunctionType first.");
-        }
-    }
-
-    public static void UnregisterCustomOptionSelectFunction(string name)
-    {
-        if (!CustomOptionSelectFunctions.Remove(name))
-        {
-            API.LogWarning($"Custom option select function '{name}' was not registered or already unregistered.");
-        }
+        CustomOptionSelectFunctions.Remove(id, out FunctionDelegate? _);
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc), "OptionSelectFunction(app.training.TrainingFuncType, app.training.BaseParam, app.training.UIFlowTrainingMenu.Param.ViewData, System.Int32)", MethodHookType.Pre)]
@@ -149,13 +129,13 @@ public static class TrainingFunctionHooks
         // FuncType argument
         int funcType = (int)args[2];
 
-        if (!FunctionTypeRegistry.TryGetFunctionName(funcType, out string? functionName))
+        if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out Guid functionId))
         {
             return PreHookResult.Continue;
         }
 
         // Adjust the FuncType to match our custom range
-        if (CustomOptionSelectFunctions.TryGetValue(functionName!, out FunctionDelegate? action))
+        if (CustomOptionSelectFunctions.TryGetValue(functionId!, out FunctionDelegate? action))
         {
             try
             {
@@ -165,7 +145,7 @@ public static class TrainingFunctionHooks
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
 
                 // Invoke function
-                action!.Invoke(baseParam, viewData, rowIndex);
+                s_returnValueForCustomOptionSelectFunction = action.Invoke(baseParam, viewData, rowIndex);
             }
             catch (Exception ex)
             {
@@ -190,17 +170,151 @@ public static class TrainingFunctionHooks
         if (s_handledCustomOptionSelectFunction)
         {
             // output is Boolean, determines whether or not the menu should close.
-            retval = 0;
+            retval = s_returnValueForCustomOptionSelectFunction ? 1UL : 0UL;
 
             // Reset for the next call
             s_handledCustomOptionSelectFunction = false;
         }
     }
 
-    public static void Clear()
+
+    [ThreadStatic]
+    private static bool s_handledCustomOptionXFunction;
+
+    [ThreadStatic]
+    private static bool s_returnValueForCustomOptionXFunction;
+
+
+    internal static void RegisterCustomOptionXFunction(Guid id, FunctionDelegate action)
+    {
+        if (FunctionTypeRegistry.TryGetFunctionType(id, out int _))
+        {
+            CustomOptionXFunctions.TryAdd(id, action);
+        }
+        else
+        {
+            throw new InvalidOperationException($"Custom option X function '{id}' is not registered. Call RegisterNewFunctionType first.");
+        }
+    }
+
+    internal static void UnregisterCustomOptionXFunction(Guid id)
+    {
+        CustomOptionXFunctions.Remove(id, out FunctionDelegate? _);
+    }
+
+    [MethodHook(typeof(app.training.TrainingMenuFunc), "OptionXFunction(app.training.TrainingFuncType, app.training.BaseParam, app.training.UIFlowTrainingMenu.Param.ViewData, System.Int32)", MethodHookType.Pre)]
+    public static PreHookResult OnOptionXFunctionPre(Span<ulong> args)
+    {
+        int funcType = (int)args[2];
+
+        if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out Guid functionId))
+        {
+            return PreHookResult.Continue;
+        }
+
+        if (CustomOptionXFunctions.TryGetValue(functionId, out FunctionDelegate? action))
+        {
+            try
+            {
+                int rowIndex = (int)args[5];
+                var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
+                var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
+                s_returnValueForCustomOptionXFunction = action.Invoke(baseParam, viewData, rowIndex);
+            }
+            catch (Exception ex)
+            {
+                API.LogError($"Exception in OnOptionXFunctionPre: {ex.Message}");
+                return PreHookResult.Continue;
+            }
+
+            s_handledCustomOptionXFunction = true;
+            return PreHookResult.Skip;
+        }
+
+        return PreHookResult.Continue;
+    }
+
+    [MethodHook(typeof(app.training.TrainingMenuFunc), "OptionXFunction(app.training.TrainingFuncType, app.training.BaseParam, app.training.UIFlowTrainingMenu.Param.ViewData, System.Int32)", MethodHookType.Post)]
+    public static void OnOptionXFunctionPost(ref ulong retval)
+    {
+        if (s_handledCustomOptionXFunction)
+        {
+            retval = s_returnValueForCustomOptionXFunction ? 1UL : 0UL;
+            s_handledCustomOptionXFunction = false;
+        }
+    }
+
+    [ThreadStatic]
+    private static bool s_handledCustomOptionYFunction;
+
+    [ThreadStatic]
+    private static bool s_returnValueForCustomOptionYFunction;
+
+    internal static void RegisterCustomOptionYFunction(Guid id, FunctionDelegate action)
+    {
+        if (FunctionTypeRegistry.TryGetFunctionType(id, out int _))
+        {
+            CustomOptionYFunctions.TryAdd(id, action);
+        }
+        else
+        {
+            throw new InvalidOperationException($"Custom option Y function '{id}' is not registered. Call RegisterNewFunctionType first.");
+        }
+    }
+
+    internal static void UnregisterCustomOptionYFunction(Guid id)
+    {
+        CustomOptionYFunctions.Remove(id, out FunctionDelegate? _);
+    }
+
+    [MethodHook(typeof(app.training.TrainingMenuFunc), "OptionYFunction(app.training.TrainingFuncType, app.training.BaseParam, app.training.UIFlowTrainingMenu.Param.ViewData, System.Int32)", MethodHookType.Pre)]
+    public static PreHookResult OnOptionYFunctionPre(Span<ulong> args)
+    {
+        int funcType = (int)args[2];
+
+        if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out Guid functionId))
+        {
+            return PreHookResult.Continue;
+        }
+
+        if (CustomOptionYFunctions.TryGetValue(functionId, out FunctionDelegate? action))
+        {
+            try
+            {
+                int rowIndex = (int)args[5];
+                var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
+                var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
+                s_returnValueForCustomOptionYFunction = action.Invoke(baseParam, viewData, rowIndex);
+            }
+            catch (Exception ex)
+            {
+                API.LogError($"Exception in OnOptionYFunctionPre: {ex.Message}");
+                return PreHookResult.Continue;
+            }
+
+            s_handledCustomOptionYFunction = true;
+            return PreHookResult.Skip;
+        }
+
+        return PreHookResult.Continue;
+    }
+
+    [MethodHook(typeof(app.training.TrainingMenuFunc), "OptionYFunction(app.training.TrainingFuncType, app.training.BaseParam, app.training.UIFlowTrainingMenu.Param.ViewData, System.Int32)", MethodHookType.Post)]
+    public static void OnOptionYFunctionPost(ref ulong retval)
+    {
+        if (s_handledCustomOptionYFunction)
+        {
+            retval = s_returnValueForCustomOptionYFunction ? 1UL : 0UL;
+            s_handledCustomOptionYFunction = false;
+        }
+    }
+
+    internal static void Clear()
     {
         CustomFunctions.Clear();
         CustomOptionSelectFunctions.Clear();
+        CustomOptionXFunctions.Clear();
+        CustomOptionYFunctions.Clear();
     }
 
 

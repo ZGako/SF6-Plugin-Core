@@ -11,10 +11,11 @@ global using REFrameworkNET.Callbacks;
 
 using SF6_Plugin_Core.Services;
 using SF6_Plugin_Core.UI;
+using SF6_Plugin_Core.UI.Localization;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core;
 
-//FIXME: refactor
 public static class CoreLifecycle
 {
     public static event Action? OnCoreUnloading;
@@ -26,9 +27,18 @@ public static class CoreLifecycle
 
         OnCoreUnloading = null;
 
+        // clear services
         GameSingletonManager.Clear();
         BFlowHooks.ClearAllRegisteredFlowTransitions();
-        BattleHudHooks.ClearAllRegisteredBattleHudCallbacks();
         FrameCallbackPoller.Clear();
+
+        // clear battle hud hooks
+        BattleHudHooks.ClearAllRegisteredBattleHudCallbacks();
+
+        // clear localization
+        MessageRegistry.Clear();
+
+        // clear training pause menu
+        PauseMenuManager.ClearTrainingPauseMenuHooks();
     }
 }

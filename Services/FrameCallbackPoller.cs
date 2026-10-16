@@ -2,7 +2,11 @@ using System.Runtime.CompilerServices;
 
 namespace SF6_Plugin_Core.Services;
 
-public static class FrameCallbackPoller
+/// <summary>
+/// A utility class that allows for polling a condition on the main thread, 
+/// executing callbacks when the condition is met or when a timeout occurs.
+/// </summary>
+internal static class FrameCallbackPoller
 {
     private readonly record struct PollJob(
         Func<bool> Condition,
@@ -14,6 +18,14 @@ public static class FrameCallbackPoller
 
     private static readonly ConcurrentQueue<PollJob> s_jobs = new();
 
+    /// <summary>
+    /// Queues a polling job to wait until a condition is met (such as an asynchronous prefab asset becoming ready), 
+    /// executing <paramref name="onReady"/> on success or <paramref name="onAborted"/> upon timeout.
+    /// </summary>
+    /// <param name="condition">The condition evaluated every frame.</param>
+    /// <param name="onReady">Callback invoked when the condition returns true.</param>
+    /// <param name="onAborted">Optional callback invoked if the job times out or throws an exception.</param>
+    /// <param name="maxFrames">Maximum number of frames to wait before timing out (default: 600).</param>
     public static void WaitUntil(
         Func<bool> condition,
         Action onReady,

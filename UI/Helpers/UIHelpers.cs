@@ -6,16 +6,13 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 namespace SF6_Plugin_Core.UI.Helpers;
 
-//FIXME: refactor
-// TODO: change the PlayObject functions to extensions
-
 /// <summary>
 /// A static class containing helper methods for UI-related operations.
 /// </summary>
 public static class UIHelpers
 {
 
-    public static ManagedObject GetGuiChild(via.gui.PlayObject parent, string childName)
+    public static ManagedObject GetGuiChild(this via.gui.PlayObject parent, string childName)
     {
         var PlayObjectType = via.gui.PlayObject.REFType.RuntimeType;
         if ((parent as IObject) == null)
@@ -43,7 +40,7 @@ public static class UIHelpers
         throw new InvalidOperationException($"Child with name '{childName}' not found in PlayObject '{parent}'.");
     }
 
-    public static _System.Array GetGuiChildrenOfType(via.gui.PlayObject parent, TypeDefinition childType)
+    public static _System.Array GetGuiChildrenOfType(this via.gui.PlayObject parent, TypeDefinition childType)
     {
         var SearchType = childType.RuntimeType;
 
@@ -55,19 +52,5 @@ public static class UIHelpers
         var guiChildrenArray = (parent as IObject)!.Call("getChildren(System.Type)", SearchType).GetObjectAs<_System.Array>("Failed to retrieve children as _System.Array.");
 
         return guiChildrenArray;
-    }
-
-
-    /// <summary>
-    /// Clears all registered custom function types and their associated delegates in the Training Pause Menu system.
-    /// </summary>
-    public static void ClearTrainingPauseMenuDispatchers()
-    {
-        // Clear all registered custom function types and their associated delegates
-        MessageRegistry.Clear();
-        FunctionTypeRegistry.Clear();
-        TrainingFunctionHooks.Clear();
-        SpinBoxHook.Clear();
-        InputGuideHook.Clear();
     }
 }

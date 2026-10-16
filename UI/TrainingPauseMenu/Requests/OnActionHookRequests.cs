@@ -3,27 +3,22 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
-//FIXME: refactor
+
 public class FunctionHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate) : ExclusiveModificationRequest, IUIHookRequest
 {
     private readonly TrainingFunctionHooks.FunctionDelegate _functionDelegate = functionDelegate;
 
-    private string? _functionName;
+    private Guid _functionId;
 
-    public void AddDispatcher(string functionName)
+    public void AddHook(Guid functionId)
     {
-        _functionName = functionName;
-        TrainingFunctionHooks.RegisterCustomFunction(functionName, _functionDelegate);
+        _functionId = functionId;
+        TrainingFunctionHooks.RegisterCustomFunction(functionId, _functionDelegate);
     }
 
-    public void ClearDispatcher()
+    public void ClearHook()
     {
-        if (_functionName is null)
-        {
-            API.LogError("Cannot clear dispatcher because it was never added.");
-            throw new InvalidOperationException("Cannot clear dispatcher because it was never added.");
-        }
-        TrainingFunctionHooks.UnregisterCustomFunction(_functionName);
+        TrainingFunctionHooks.UnregisterCustomFunction(_functionId);
     }
 
     public override FunctionHookRequest Clone()
@@ -36,22 +31,17 @@ public class OptionSelectHookRequest(TrainingFunctionHooks.FunctionDelegate func
 {
     private readonly TrainingFunctionHooks.FunctionDelegate _functionDelegate = functionDelegate;
 
-    private string? _functionName;
+    private Guid _functionId;
 
-    public void AddDispatcher(string functionName)
+    public void AddHook(Guid functionId)
     {
-        _functionName = functionName;
-        TrainingFunctionHooks.RegisterCustomOptionSelectFunction(functionName, _functionDelegate);
+        _functionId = functionId;
+        TrainingFunctionHooks.RegisterCustomOptionSelectFunction(functionId, _functionDelegate);
     }
 
-    public void ClearDispatcher()
+    public void ClearHook()
     {
-        if (_functionName is null)
-        {
-            API.LogError("Cannot clear dispatcher because it was never added.");
-            throw new InvalidOperationException("Cannot clear dispatcher because it was never added.");
-        }
-        TrainingFunctionHooks.UnregisterCustomOptionSelectFunction(_functionName);
+        TrainingFunctionHooks.UnregisterCustomOptionSelectFunction(_functionId);
     }
 
     public override OptionSelectHookRequest Clone()
@@ -60,5 +50,48 @@ public class OptionSelectHookRequest(TrainingFunctionHooks.FunctionDelegate func
     }
 }
 
-//TODO: add the OptionX and OptionY stuff
-//TODO: maybe one can simplify the code instead of copy pasting? But whatever
+public class OptionXHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate) : ExclusiveModificationRequest, IUIHookRequest
+{
+    private readonly TrainingFunctionHooks.FunctionDelegate _functionDelegate = functionDelegate;
+
+    private Guid _functionId;
+
+    public void AddHook(Guid functionId)
+    {
+        _functionId = functionId;
+        TrainingFunctionHooks.RegisterCustomOptionXFunction(functionId, _functionDelegate);
+    }
+
+    public void ClearHook()
+    {
+        TrainingFunctionHooks.UnregisterCustomOptionXFunction(_functionId);
+    }
+
+    public override OptionXHookRequest Clone()
+    {
+        return new OptionXHookRequest(_functionDelegate);
+    }
+}
+
+public class OptionYHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate) : ExclusiveModificationRequest, IUIHookRequest
+{
+    private readonly TrainingFunctionHooks.FunctionDelegate _functionDelegate = functionDelegate;
+
+    private Guid _functionId;
+
+    public void AddHook(Guid functionId)
+    {
+        _functionId = functionId;
+        TrainingFunctionHooks.RegisterCustomOptionYFunction(functionId, _functionDelegate);
+    }
+
+    public void ClearHook()
+    {
+        TrainingFunctionHooks.UnregisterCustomOptionYFunction(_functionId);
+    }
+
+    public override OptionYHookRequest Clone()
+    {
+        return new OptionYHookRequest(_functionDelegate);
+    }
+}

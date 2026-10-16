@@ -1,7 +1,5 @@
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-//FIXME: refactor
-
 public interface IUIModificationRequest
 {
     IUIModificationRequest Clone();
@@ -10,7 +8,7 @@ public interface IUIModificationRequest
 
 public interface IUICustomElementInitialization
 {
-    app.training.TrainingMenuData InitializeCustomElement(string functionName);
+    app.training.TrainingMenuData InitializeCustomElement(Guid functionNameId);
 
     // message strings handling and stuff. Also Release the managed object created
     void Clear();
@@ -20,10 +18,10 @@ public interface IUICustomElementInitialization
 
 public interface IUIHookRequest : IUIModificationRequest
 {
-    void AddDispatcher(string functionName);
+    void AddHook(Guid functionNameId);
 
     /// TODO: do I even need this if I clear everything from MenuManager on rebuild
-    void ClearDispatcher();
+    void ClearHook();
 }
 
 
@@ -43,8 +41,32 @@ public abstract class ExclusiveModificationRequest : IUIModificationRequest
         _isClaimed = true;
     }
 
-    public void Release()
+    public void ReleaseClaim()
     {
         _isClaimed = false;
     }
+}
+
+public readonly struct TrainingFuncOrGuid
+{
+    internal readonly bool IsGuid;
+    internal readonly app.training.TrainingFuncType IntValue;
+    internal readonly Guid GuidValue;
+
+    private TrainingFuncOrGuid(app.training.TrainingFuncType intValue)
+    {
+        IsGuid = false;
+        IntValue = intValue;
+        GuidValue = Guid.Empty;
+    }
+
+    private TrainingFuncOrGuid(Guid guidValue)
+    {
+        IsGuid = true;
+        IntValue = 0;
+        GuidValue = guidValue;
+    }
+
+    public static implicit operator TrainingFuncOrGuid(app.training.TrainingFuncType intValue) => new TrainingFuncOrGuid(intValue);
+    public static implicit operator TrainingFuncOrGuid(Guid guidValue) => new TrainingFuncOrGuid(guidValue);
 }

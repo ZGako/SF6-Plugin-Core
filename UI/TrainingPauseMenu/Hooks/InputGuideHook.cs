@@ -3,11 +3,11 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
-//FIXME: refactor
+
 public static class InputGuideHook
 {
 
-    private static readonly Dictionary<string, InputGuideDelegate> CustomInputGuideDelegates = [];
+    private static readonly ConcurrentDictionary<Guid, InputGuideDelegate> CustomInputGuideDelegates = [];
 
     // delegate type for pause menu input guide data modification
     public delegate void InputGuideDelegate(ref REFrameworkNET.Collections.IList<app.InputGuideData> outInputGuideDataList, ref REFrameworkNET.Collections.IList<string> outStringList);
@@ -23,49 +23,23 @@ public static class InputGuideHook
     private static int s_handledCustomFunction;
 
 
-    public static void RegisterCustomInputGuideFunction(string name, InputGuideDelegate action)
+    internal static void RegisterCustomInputGuideFunction(Guid id, InputGuideDelegate action)
     {
         // Generate a unique FuncType integer for this custom function
 
-        if (FunctionTypeRegistry.TryGetFunctionType(name, out int _))
+        if (FunctionTypeRegistry.TryGetFunctionType(id, out int _))
         {
-            if (!CustomInputGuideDelegates.TryAdd(name, action))
-            {
-                API.LogWarning($"Custom input guide function '{name}' is already registered.");
-            }
+            CustomInputGuideDelegates.TryAdd(id, action);
         }
         else
         {
-            API.LogError($"Custom input guide function '{name}' is not registered. Call RegisterNewFunctionType first.");
+            throw new InvalidOperationException($"Custom input guide function '{id}' is not registered. Call RegisterNewFunctionType first.");
         }
     }
 
-    /// <summary>
-    /// legacy method as we now register the game's own FuncType into the function registry as well.
-    /// </summary>
-    /// <param name="funcType"></param>
-    /// <param name="action"></param>
-    public static void RegisterCustomInputGuideFunction(app.training.TrainingFuncType funcType, InputGuideDelegate action)
+    internal static void UnregisterCustomInputGuideFunction(Guid id)
     {
-        if (FunctionTypeRegistry.TryGetFunctionName((int)funcType, out string? name))
-        {
-            if (!CustomInputGuideDelegates.TryAdd(name!, action))
-            {
-                API.LogWarning($"Custom input guide function for FuncType '{funcType}' is already registered.");
-            }
-        }
-        else
-        {
-            API.LogError($"Custom input guide function for FuncType '{funcType}' is not registered. Call RegisterNewFunctionType first.");
-        }
-    }
-
-    public static void UnregisterCustomInputGuideFunction(string name)
-    {
-        if (!CustomInputGuideDelegates.Remove(name))
-        {
-            API.LogWarning($"Custom input guide function '{name}' was not registered.");
-        }
+        CustomInputGuideDelegates.TryRemove(id, out InputGuideDelegate? _);
     }
 
 
@@ -81,12 +55,12 @@ public static class InputGuideHook
             return PreHookResult.Continue;
         }
 
-        if (!FunctionTypeRegistry.TryGetFunctionName((int)currentMenuData.FuncType, out string? name))
+        if (!FunctionTypeRegistry.TryGetFunctionId((int)currentMenuData.FuncType, out Guid id))
         {
             return PreHookResult.Continue;
         }
 
-        if (CustomInputGuideDelegates.ContainsKey(name!))
+        if (CustomInputGuideDelegates.ContainsKey(id))
         {
             s_handledCustomFunction = (int)currentMenuData.FuncType;
             s_pendingOutInputGuideDataListPtr = args[3];
@@ -104,12 +78,12 @@ public static class InputGuideHook
             return;
         }
 
-        if (!FunctionTypeRegistry.TryGetFunctionName(s_handledCustomFunction, out string? name))
+        if (!FunctionTypeRegistry.TryGetFunctionId(s_handledCustomFunction, out Guid id))
         {
             return;
         }
 
-        if (CustomInputGuideDelegates.TryGetValue(name!, out InputGuideDelegate? action))
+        if (CustomInputGuideDelegates.TryGetValue(id, out InputGuideDelegate? action))
         {
             try
             {
@@ -134,7 +108,7 @@ public static class InputGuideHook
         s_pendingOutStringListPtr = 0; // Reset after use
     }
 
-    public static void Clear()
+    internal static void Clear()
     {
         CustomInputGuideDelegates.Clear();
     }

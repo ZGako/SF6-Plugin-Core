@@ -5,32 +5,35 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
-//FIXME: refactor
-public class UICustomElementNode(string functionName, IUICustomElementInitialization customInitializer)
+
+public class UICustomElementNode(Guid functionId, IUICustomElementInitialization customInitializer)
 {
-    private readonly string _functionName = functionName;
+    private readonly Guid _functionId = functionId;
     private readonly IUICustomElementInitialization _customInitializer = customInitializer;
 
-    private readonly List<IUIHookRequest> _dispatcherInstructions = [];
+    private readonly List<IUIHookRequest> _hookInstructions = [];
 
-    public bool AddDispatcher(IUIHookRequest dispatcherRequest)
+    public void AddHook(IUIHookRequest hookRequest)
     {
-        Type incomingType = dispatcherRequest.GetType();
-        bool hasSameDispatcherClass = _dispatcherInstructions.Any(r => r.GetType() == incomingType);
+        Type incomingType = hookRequest.GetType();
+        bool hasSameHookClass = _hookInstructions.Any(r => r.GetType() == incomingType);
 
-        if (hasSameDispatcherClass)
+        if (hasSameHookClass)
         {
-            // A dispatcher request of this specific concrete class already exists.
-            return false;
+            // A hook request of this specific concrete class already exists.
+            throw new InvalidOperationException($"A hook request of type {incomingType.Name} is already registered for this custom element. Cannot register multiple hooks of the same type.");
         }
 
-        _dispatcherInstructions.Add(dispatcherRequest);
-        return true;
+        _hookInstructions.Add(hookRequest);
     }
 
-    public void RemoveDispatcher(IUIHookRequest dispatcherRequest)
+    public void RemoveHook(IUIHookRequest hookRequest)
     {
-        _dispatcherInstructions.Remove(dispatcherRequest);
+
+        if (_hookInstructions.Remove(hookRequest))
+        {
+            hookRequest.ClearHook();
+        }
     }
 
     private readonly List<UICustomElementNode> _childNodes = [];
@@ -38,20 +41,20 @@ public class UICustomElementNode(string functionName, IUICustomElementInitializa
     private ManagedObject? _childDataArrayMo = null;
 
     /// FIXME current implementation doesn't follow the plan of having the children support registering and unregistering and having their
-    /// dispatchers added each time whilst not reinitializing the custom element each time.
+    /// hooks added each time whilst not reinitializing the custom element each time.
 
-    public app.training.TrainingMenuData Build()
+    internal app.training.TrainingMenuData Build()
     {
         // call the custom initializer to initialize the custom element
         // this way the function types will be numbered similarly to the game (doesn't actually matter)
-        var customElementData = _customInitializer.InitializeCustomElement(_functionName);
+        var customElementData = _customInitializer.InitializeCustomElement(_functionId);
 
         // now we traverse the child nodes recursively and build their data
-        // on the way up we add the dispatchers and create the childData arrays
+        // on the way up we add the hooks and create the childData arrays
         if (_childNodes.Count > 0)
         {
             // if there's an existing childData array, release it first
-            _childDataArrayMo?.Release();
+            _childDataArrayMo?.ReleaseIfGlobalized();
 
             // create a new array
             _childDataArrayMo = app.training.TrainingMenuData.REFType.CreateManagedArray((uint)_childNodes.Count);
@@ -69,33 +72,31 @@ public class UICustomElementNode(string functionName, IUICustomElementInitializa
             customElementData.ChildData = childDataArray;
         }
 
-        // add the dispatchers to the custom element
-        foreach (var dispatcher in _dispatcherInstructions)
+        // add the hooks to the custom element
+        foreach (var hook in _hookInstructions)
         {
-            dispatcher.AddDispatcher(_functionName);
+            hook.AddHook(_functionId);
         }
 
         return customElementData;
     }
 
-    /// TODO the new element adding requests when deleted have to clear out their own message UIs
-
     /// this is the full clear method that's called when the element gets completely removed from the tree
-    public void Clear()
+    internal void Clear()
     {
         // traverse the children and clear them
         foreach (var child in _childNodes)
         {
             child.Clear();
         }
-        _childDataArrayMo?.Release();
+        _childDataArrayMo?.ReleaseIfGlobalized();
         _childDataArrayMo = null;
 
         _customInitializer.Clear();
 
-        foreach (var dispatcher in _dispatcherInstructions)
+        foreach (var hook in _hookInstructions)
         {
-            dispatcher.ClearDispatcher();
+            hook.ClearHook();
         }
     }
 

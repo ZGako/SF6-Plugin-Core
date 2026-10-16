@@ -1,13 +1,8 @@
+using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
-//FIXME: refactor
-// TODO change this dispatcher to consider the new implementation strategy
-// FIXME find a way to track the element indices that are being used (this is probably gonna require a modifier of some kind)
-// so actually this can get the FuncType through the viewlist[index].Data.FuncType, so I don't even need the location.
-
-//TODO: check if maybe I should call it SpinBoxInitHook or something like that instead? Who knows
 public static class SpinBoxHook
 {
 
@@ -16,40 +11,32 @@ public static class SpinBoxHook
     /// </summary>
     /// <param name="param"></param>
     /// <returns></returns>
-    public delegate int SpinBoxInitDelegate(app.training.UIFlowTrainingMenu.Param param);
+    public delegate TrainingFuncOrGuid SpinBoxInitDelegate(app.training.UIFlowTrainingMenu.Param param);
 
     // since the initialization of the spinbox is determined by the game's logic, it doesn't match with our modified/added spinboxes, so we need to dispatch custom initialization logic
-    private static readonly Dictionary<string, SpinBoxInitDelegate> CustomInitializations = [];
+    private static readonly ConcurrentDictionary<Guid, SpinBoxInitDelegate> CustomInitializations = [];
 
-    public static void RegisterCustomSpinBoxInitialization(string name, SpinBoxInitDelegate initDelegate)
+    internal static void RegisterCustomSpinBoxInitialization(Guid id, SpinBoxInitDelegate initDelegate)
     {
-        if (FunctionTypeRegistry.TryGetFunctionType(name, out int _))
+        if (FunctionTypeRegistry.TryGetFunctionType(id, out int _))
         {
-            if (!CustomInitializations.TryAdd(name, initDelegate))
-            {
-                API.LogWarning($"Custom initialization for '{name}' is already registered.");
-            }
+            CustomInitializations.TryAdd(id, initDelegate);
         }
         else
         {
-            API.LogError($"Custom initialization '{name}' is not registered. Call RegisterNewFunctionType first.");
+            throw new InvalidOperationException($"Custom spinbox initialization function '{id}' is not registered. Call RegisterNewFunctionType first.");
         }
     }
 
-    public static void UnregisterCustomSpinBoxInitialization(string name)
+    internal static void UnregisterCustomSpinBoxInitialization(Guid id)
     {
-        if (!CustomInitializations.Remove(name))
-        {
-            API.LogWarning($"Custom initialization for '{name}' was not registered.");
-        }
+        CustomInitializations.TryRemove(id, out SpinBoxInitDelegate? _);
     }
 
-    // FIXME eventually I'll have to relook at the whole caller function and indices thing which isn't very clear
-    // but for now it's fine
     [MethodHook(typeof(app.training.UIFlowTrainingMenu.Param), "InitSpinBox(System.Int32)", MethodHookType.Pre)]
     public static PreHookResult OnInitSpinBoxPre(Span<ulong> args)
     {
-        var currentObject = ManagedObject.ToManagedObject(args[1])?.As<app.training.UIFlowTrainingMenu.Param>();
+        var currentObject = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[1]);
 
         if (currentObject == null)
         {
@@ -67,15 +54,25 @@ public static class SpinBoxHook
 
         var currentSpinBox = currentObject.ViewDataList[currentIndex].Data;
 
-        if (!FunctionTypeRegistry.TryGetFunctionName((int)currentSpinBox.FuncType, out string? functionName))
+        if (!FunctionTypeRegistry.TryGetFunctionId((int)currentSpinBox.FuncType, out Guid functionId))
         {
             return PreHookResult.Continue;
         }
 
-        if (CustomInitializations.TryGetValue(functionName!, out SpinBoxInitDelegate? initDelegate))
+        if (CustomInitializations.TryGetValue(functionId, out SpinBoxInitDelegate? initDelegate))
         {
             // Invoke the custom initialization logic
-            int selectedFuncType = initDelegate.Invoke(currentObject);
+            TrainingFuncOrGuid returnVal = initDelegate.Invoke(currentObject);
+
+            int selectedFuncType = returnVal switch
+            {
+                TrainingFuncOrGuid { IsGuid: true, GuidValue: var guid } =>
+                    FunctionTypeRegistry.TryGetFunctionType(guid, out int funcType_ret) ? funcType_ret :
+                    throw new InvalidOperationException($"Custom spinbox initialization delegate returned an unregistered function type ID '{guid}'."),
+                TrainingFuncOrGuid { IsGuid: false, IntValue: var intValue } =>
+                    (int)intValue < FunctionTypeRegistry.TrainingFuncTypeMax ? (int)intValue :
+                    throw new InvalidOperationException($"Custom spinbox initialization delegate returned an invalid function type integer '{intValue}'.")
+            };
 
             // search the childdata for the element of the selectedFuncType and set the index to that element
             for (int i = 0; i < currentSpinBox.ChildData.Count; i++)
@@ -91,7 +88,7 @@ public static class SpinBoxHook
         return PreHookResult.Continue;
     }
 
-    public static void Clear()
+    internal static void Clear()
     {
         CustomInitializations.Clear();
     }

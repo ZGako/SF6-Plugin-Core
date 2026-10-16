@@ -5,7 +5,7 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
-//FIXME: refactor
+
 public abstract class CustomElementBase(CustomElementBase.CustomElementInitializer initializer) : IUICustomElementInitialization
 {
     protected class CustomElementInitializer : IUICustomElementInitialization
@@ -34,8 +34,18 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
 
         // class specific fields
         private ManagedObject? _customElementDataMo;
-        public app.training.TrainingMenuData InitializeCustomElement(string functionName)
+        public app.training.TrainingMenuData InitializeCustomElement(Guid functionNameId)
         {
+            // if the MO was already created, we simply return the existing instance with the newly registered functionNameId 
+            // (which gets reset each time Build is being called anyways)
+
+            if (_customElementDataMo != null)
+            {
+                var existingElement = _customElementDataMo.As<app.training.TrainingMenuData>();
+                existingElement.FuncType = (app.training.TrainingFuncType)FunctionTypeRegistry.RegisterNewFunctionType(functionNameId);
+                return existingElement;
+            }
+
             var newElementMo = app.training.TrainingMenuData.REFType.CreateInstance(0);
             newElementMo.Globalize();
             _customElementDataMo = newElementMo;
@@ -43,7 +53,7 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
             var newElement = newElementMo.As<app.training.TrainingMenuData>();
             // set the non value-type fields
             newElement.Type = Type;
-            newElement.FuncType = (app.training.TrainingFuncType)FunctionTypeRegistry.RegisterNewFunctionType(functionName);
+            newElement.FuncType = (app.training.TrainingFuncType)FunctionTypeRegistry.RegisterNewFunctionType(functionNameId);
             newElement.IsEnabled = IsEnabled;
             newElement.IsCantFocus = IsCantFocus;
             newElement.IsForceFocus = IsForceFocus;
@@ -94,22 +104,22 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
 
         public void Clear()
         {
-            // MessageID?.ClearCachedEngineStrings();
-            // SubMessageID?.ClearCachedEngineStrings();
-            // GuideMessage?.ClearCachedEngineStrings();
-            // GuideMessageID?.ClearCachedEngineStrings();
-            // EndWordsGuid?.ClearCachedEngineStrings();
+            MessageID?.Dispose();
+            SubMessageID?.Dispose();
+            GuideMessage?.Dispose();
+            GuideMessageID?.Dispose();
+            EndWordsGuid?.Dispose();
 
-            _customElementDataMo?.Release();
+            _customElementDataMo?.ReleaseIfGlobalized();
             _customElementDataMo = null;
         }
     }
 
     protected readonly CustomElementInitializer _initializer = initializer;
 
-    public app.training.TrainingMenuData InitializeCustomElement(string functionName)
+    public app.training.TrainingMenuData InitializeCustomElement(Guid functionNameId)
     {
-        return _initializer.InitializeCustomElement(functionName);
+        return _initializer.InitializeCustomElement(functionNameId);
     }
 
     public void Clear()

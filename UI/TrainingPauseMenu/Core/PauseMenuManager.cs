@@ -1,17 +1,16 @@
 // Core usings
 
 using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-//FIXME: refactor
 /// <summary>
-/// 
+/// Controls dynamic layout restructuring, element injection, and hooks for the training mode pause menu.
 /// </summary>
 public static class PauseMenuManager
 {
-
     private static ManagedObject? GetUIDataMo()
     {
         var trainingManagerMo = API.GetManagedSingleton("app.training.TrainingManager");
@@ -35,8 +34,8 @@ public static class PauseMenuManager
         private List<AppendElementsRequest> AppendRequests { get; } = []; // list of append requests
         public System.Collections.Generic.IReadOnlyList<AppendElementsRequest> Appends => AppendRequests;
 
-        private List<IUIHookRequest> DispatcherRequests { get; } = []; // list of dispatcher requests
-        public System.Collections.Generic.IReadOnlyList<IUIHookRequest> Dispatchers => DispatcherRequests;
+        private List<IUIHookRequest> HookRequests { get; } = []; // list of hook requests
+        public System.Collections.Generic.IReadOnlyList<IUIHookRequest> Hooks => HookRequests;
 
         public UICachedDataNode? this[int index]
         {
@@ -94,29 +93,54 @@ public static class PauseMenuManager
             AppendRequests.Remove(appendRequest);
         }
 
-        public bool RequestDispatcher(IUIHookRequest dispatcherRequest)
+        public bool RequestHook(IUIHookRequest hookRequest)
         {
-            Type incomingType = dispatcherRequest.GetType();
-            bool hasSameDispatcherClass = DispatcherRequests.Any(r => r.GetType() == incomingType);
+            Type incomingType = hookRequest.GetType();
+            bool hasSameHookClass = HookRequests.Any(r => r.GetType() == incomingType);
 
-            if (hasSameDispatcherClass)
+            if (hasSameHookClass)
             {
-                // A dispatcher request of this specific concrete class already exists.
+                // A hook request of this specific concrete class already exists.
                 return false;
             }
 
-            DispatcherRequests.Add(dispatcherRequest);
+            HookRequests.Add(hookRequest);
             return true;
         }
 
-        public void ClearDispatcherRequest(IUIHookRequest dispatcherRequest)
+        public void ClearDHookRequest(IUIHookRequest hookRequest)
         {
-            dispatcherRequest.ClearDispatcher(); // Clear the dispatcher before removal
-            DispatcherRequests.Remove(dispatcherRequest);
+            hookRequest.ClearHook(); // Clear the hook before removal
+            HookRequests.Remove(hookRequest);
+        }
+
+        /// <summary>
+        /// Clears the cached element and all child nodes, as well as any registered modification requests (reorder, append, hook) for this node and its children.
+        /// </summary>
+        public void Clear()
+        {
+            foreach (var (_, childNode) in ChildNodes)
+            {
+                childNode.Clear();
+            }
+            ChildNodes.Clear();
+
+            ClearReorderRequest();
+            foreach (var appendRequest in AppendRequests.ToList())
+            {
+                ClearAppendRequest(appendRequest);
+            }
+            foreach (var hookRequest in HookRequests.ToList())
+            {
+                ClearDHookRequest(hookRequest);
+            }
+
+            CachedElement?.ReleaseIfGlobalized();
+            CachedElement = null;
         }
     }
 
-    private static readonly Dictionary<IUIModificationRequest, List<int>> ModificationRequestPaths = []; // maps modification requests to their traversal paths in the cached data tree
+    private static readonly ConcurrentDictionary<IUIModificationRequest, List<int>> ModificationRequestPaths = []; // maps modification requests to their traversal paths in the cached data tree
 
     private static readonly UICachedDataNode RootNode = new(null); // root node of the cached data tree
 
@@ -209,11 +233,11 @@ public static class PauseMenuManager
 
                     bool hasModifications = currentNode.ReorderRequest != null ||
                         currentNode.Appends.Count > 0 ||
-                        currentNode.Dispatchers.Count > 0;
+                        currentNode.Hooks.Count > 0;
                     if (!hasModifications)
                     {
                         // Release logic
-                        currentNode.CachedElement.Release();
+                        currentNode.CachedElement.ReleaseIfGlobalized();
                         currentNode.CachedElement = null;
                         // API.LogInfo($"Released cached element at node with {currentNode.Children.Count} children as it has no modifications.");
                         continue;
@@ -221,18 +245,22 @@ public static class PauseMenuManager
 
                     var currentElement = currentElementMo.As<app.training.TrainingMenuData>();
 
-                    // Apply the dispatcher requests to the current element.
+                    // Apply the hook requests to the current element.
 
-                    // in this loop we only ever add dispatcher for original game elements, because of this we want to register the 
+                    // in this loop we only ever add hooks for original game elements, because of this we want to register the 
                     // functionType in the function registry ourselves
-                    string functionName = currentNode.Dispatchers.Count > 0 ? FunctionTypeRegistry.RegisterGameFunctionType(currentElement.FuncType) : string.Empty;
-                    foreach (var dispatcherRequest in currentNode.Dispatchers)
+                    if (currentNode.Hooks.Count > 0)
                     {
-                        dispatcherRequest.AddDispatcher(functionName);
+                        Guid functionId = FunctionTypeRegistry.RegisterGameFunctionType(currentElement.FuncType);
+                        foreach (var hookRequest in currentNode.Hooks)
+                        {
+                            hookRequest.AddHook(functionId);
+                        }
                     }
 
                     // Gather all the appendElement requests inside a single array of lists
-                    List<app.training.TrainingMenuData>[] allNewElements = new List<app.training.TrainingMenuData>[currentElement.ChildData.Length + 1];
+                    var originalChildLength = currentElement.ChildData.Length;
+                    List<app.training.TrainingMenuData>[] allNewElements = new List<app.training.TrainingMenuData>[originalChildLength + 2];
                     // initialize the lists to avoid null reference exceptions
                     for (int i = 0; i < allNewElements.Length; i++)
                     {
@@ -241,7 +269,7 @@ public static class PauseMenuManager
 
                     foreach (var appendRequest in currentNode.Appends)
                     {
-                        var newElements = appendRequest.GetAppendList(currentElement.ChildData.Length);
+                        var newElements = appendRequest.GetAppendList(originalChildLength);
 
                         for (int i = 0; i < newElements.Length; i++)
                         {
@@ -255,7 +283,7 @@ public static class PauseMenuManager
                     }
 
                     // Create a new array
-                    var newArrMo = app.training.TrainingMenuData.REFType.CreateManagedArray((uint)(currentElement.ChildData.Length + allNewElements.Sum(list => list.Count)));
+                    var newArrMo = app.training.TrainingMenuData.REFType.CreateManagedArray((uint)(originalChildLength + allNewElements.Sum(list => list.Count)));
                     newArrMo.Globalize();
 
                     var newArr = newArrMo.As<app.training.TrainingMenuData_Array1D>();
@@ -270,7 +298,7 @@ public static class PauseMenuManager
                         newArr[newIndex++] = newElement;
                     }
 
-                    for (int targetIndex = 0; targetIndex < currentElement.ChildData.Length; targetIndex++)
+                    for (int targetIndex = 0; targetIndex < originalChildLength; targetIndex++)
                     {
                         int originalIndex = currentNode.ReorderRequest?.GetMapping(targetIndex) ?? targetIndex;
 
@@ -282,6 +310,12 @@ public static class PauseMenuManager
                         {
                             newArr[newIndex++] = newElement;
                         }
+                    }
+
+                    // insert the elements at the end of the array (which go after the last element)
+                    foreach (var newElement in allNewElements[originalChildLength + 1])
+                    {
+                        newArr[newIndex++] = newElement;
                     }
 
                     // Replace the original array with the new array
@@ -298,7 +332,7 @@ public static class PauseMenuManager
 
         if (!ModificationLock.IsHeldByCurrentThread)
         {
-            throw new SynchronizationLockException("RegisterModification must be called within a modification batch (between BeginModificationBatch and EndModificationBatch).");
+            throw new InvalidOperationException("RegisterModification must be called inside a ModifyUI call.");
         }
 
         var currentNode = RootNode;
@@ -352,7 +386,7 @@ public static class PauseMenuManager
                 {
                     ReorderRequest reorderRequest => currentNode[index]!.RequestReorder(reorderRequest),
                     AppendElementsRequest appendRequest => currentNode[index]!.RequestAppend(appendRequest),
-                    IUIHookRequest dispatcherRequest => currentNode[index]!.RequestDispatcher(dispatcherRequest),
+                    IUIHookRequest hookRequest => currentNode[index]!.RequestHook(hookRequest),
                     _ => throw new InvalidOperationException($"Unknown modification request type: {modificationRequest.GetType().Name}")
                 };
                 if (success)
@@ -380,20 +414,18 @@ public static class PauseMenuManager
     {
         if (!ModificationLock.IsHeldByCurrentThread)
         {
-            throw new SynchronizationLockException("UnregisterModification must be called within a modification batch (between BeginModificationBatch and EndModificationBatch).");
+            throw new InvalidOperationException("UnregisterModification must be called inside a ModifyUI call.");
         }
         // Remove the modification request from the parent node's list
-        // TODO if the modification contrains a custom element creation request, unregister it as well
 
-        if (!ModificationRequestPaths.TryGetValue(modificationRequest, out var traversalPath))
+        if (!ModificationRequestPaths.TryRemove(modificationRequest, out var traversalPath))
         {
-            API.LogWarning($"Modification request of type {modificationRequest.GetType().Name} is not registered. Cannot unregister.");
             return;
         }
 
         if (modificationRequest is ExclusiveModificationRequest singleUseRequest)
         {
-            singleUseRequest.Release();
+            singleUseRequest.ReleaseClaim();
         }
 
         // traverse the cached tree to find the modification request and remove it
@@ -418,8 +450,8 @@ public static class PauseMenuManager
                     case AppendElementsRequest appendRequest:
                         currentNode[index]!.ClearAppendRequest(appendRequest);
                         break;
-                    case IUIHookRequest dispatcherRequest:
-                        currentNode[index]!.ClearDispatcherRequest(dispatcherRequest);
+                    case IUIHookRequest hookRequest:
+                        currentNode[index]!.ClearDHookRequest(hookRequest);
                         break;
                     default:
                         throw new InvalidOperationException($"Unknown modification request type: {modificationRequest.GetType().Name}");
@@ -446,6 +478,31 @@ public static class PauseMenuManager
         {
             modificationAction.Invoke();
             RebuildUI();
+        }
+    }
+
+    /// <summary>
+    /// Clears all registered custom function types and their associated delegates in the Training Pause Menu system.
+    /// </summary>
+    internal static void ClearTrainingPauseMenuHooks()
+    {
+        lock (ModificationLock)
+        {
+            foreach (var request in ModificationRequestPaths.Keys)
+            {
+                if (request is ExclusiveModificationRequest singleUseRequest)
+                {
+                    singleUseRequest.ReleaseClaim();
+                }
+            }
+            ModificationRequestPaths.Clear();
+            RootNode.Clear();
+
+            // Clear all registered custom function types and their associated delegates
+            FunctionTypeRegistry.Clear();
+            TrainingFunctionHooks.Clear();
+            SpinBoxHook.Clear();
+            InputGuideHook.Clear();
         }
     }
 

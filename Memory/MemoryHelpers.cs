@@ -1,7 +1,5 @@
 namespace SF6_Plugin_Core.Memory;
 
-//FIXME: refactor
-
 public static class MemoryHelpers
 {
     /// <summary>

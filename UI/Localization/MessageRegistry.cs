@@ -1,18 +1,34 @@
 namespace SF6_Plugin_Core.UI.Localization;
 
-public static class MessageRegistry
+/// <summary>
+/// A registry for managing custom messages and their GUIDs, 
+/// allowing for the replacement of game messages with custom ones.
+/// </summary>
+internal static class MessageRegistry
 {
 
-    private static readonly Dictionary<Guid, CustomMessage> CustomMessages = [];
+    private static readonly ConcurrentDictionary<Guid, CustomMessage> CustomMessages = [];
 
     [ThreadStatic]
     private static CustomMessage? s_pendingMessageOverride;
 
+    /// <summary>
+    /// Registers a custom message.
+    /// </summary>
+    /// <param name="message">The custom message to register.</param>
     public static void RegisterCustomMessage(CustomMessage message)
     {
         if (!CustomMessages.ContainsKey(message.Id))
         {
             CustomMessages[message.Id] = message;
+        }
+    }
+
+    internal static void UnregisterCustomMessage(Guid id)
+    {
+        if (CustomMessages.TryRemove(id, out var msg))
+        {
+            msg.ClearCachedEngineStrings();
         }
     }
 
@@ -48,6 +64,9 @@ public static class MessageRegistry
         }
     }
 
+    /// <summary>
+    /// Clears all registered custom messages.
+    /// </summary>
     public static void Clear()
     {
         foreach (var msg in CustomMessages.Values)

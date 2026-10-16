@@ -1,59 +1,93 @@
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-//FIXME: refactor
-public static class FunctionTypeRegistry
+
+/// <summary>
+/// Registry for mapping custom and game-specific training function types and names.
+/// </summary>
+internal static class FunctionTypeRegistry
 {
     // Store all new allocated functionTypes here
-    private static readonly Dictionary<string, int> ForwardLookup = [];
-    private static readonly Dictionary<int, string> ReverseLookup = [];
+    private static readonly ConcurrentDictionary<Guid, int> ForwardLookup = [];
+    private static readonly ConcurrentDictionary<int, Guid> ReverseLookup = [];
+    private static int _customFunctionCount = 0;
 
-    public static int RegisterNewFunctionType(string name)
+    public static readonly int TrainingFuncTypeMax = Convert.ToInt32(API.GetTDB().FindType("app.training.TrainingFuncType").GetField("MAX").GetDataBoxed(0, false));
+
+    /// <summary>
+    /// Registers a new custom training function type with a unique ID and returns it.
+    /// </summary>
+    /// <param name="id">The id of the custom function type.</param>
+    /// <returns>The assigned unique integer function type ID.</returns>
+    internal static int RegisterNewFunctionType(Guid id)
     {
-        var funcType = (int)app.training.TrainingFuncType.MAX + 1 + ForwardLookup.Count;
-
         // since the mappings have to be unique, check if the name is already registered
-        if (ForwardLookup.TryGetValue(name, out int value))
+        if (ForwardLookup.TryGetValue(id, out int value))
         {
-            API.LogWarning($"Custom Function type '{name}' is already registered.");
+            API.LogWarning($"Custom Function type '{id}' is already registered.");
             return value;
         }
 
-        ForwardLookup[name] = funcType;
-        ReverseLookup[funcType] = name;
+        var funcType = TrainingFuncTypeMax + Interlocked.Increment(ref _customFunctionCount);
 
-        return ForwardLookup[name];
+        ForwardLookup[id] = funcType;
+        ReverseLookup[funcType] = id;
+
+        return ForwardLookup[id];
     }
 
-    public static string RegisterGameFunctionType(app.training.TrainingFuncType funcType)
+    /// <summary>
+    /// Registers an existing game training function type and maps its string representation to its integer value.
+    /// </summary>
+    /// <param name="funcType">The game training function type to register.</param>
+    /// <returns>The unique ID of the function type.</returns>
+    internal static Guid RegisterGameFunctionType(app.training.TrainingFuncType funcType)
     {
         int funcTypeInt = (int)funcType;
-        string name = funcType.ToString();
 
         // since the mappings have to be unique, check if the name is already registered
-        if (ForwardLookup.TryGetValue(name, out int _))
+        if (ReverseLookup.TryGetValue(funcTypeInt, out Guid existingId))
         {
-            API.LogWarning($"Game Function type '{name}' is already registered.");
+            return existingId;
         }
 
-        ForwardLookup[name] = funcTypeInt;
-        ReverseLookup[funcTypeInt] = name;
+        // Deterministic Guid for vanilla TrainingFuncType so it stays identical across rebuilds
+        Guid id = new(funcTypeInt, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
 
-        return name;
+        ForwardLookup[id] = funcTypeInt;
+        ReverseLookup[funcTypeInt] = id;
+
+        return id;
     }
 
-    public static bool TryGetFunctionType(string name, out int funcType)
+    /// <summary>
+    /// Attempts to retrieve the function type ID associated with the specified name.
+    /// </summary>
+    /// <param name="id">The ID of the function type.</param>
+    /// <param name="funcType">When this method returns, contains the function type ID if found.</param>
+    /// <returns><c>true</c> if the function type was found; otherwise, <c>false</c>.</returns>
+    public static bool TryGetFunctionType(Guid id, out int funcType)
     {
-        return ForwardLookup.TryGetValue(name, out funcType);
+        return ForwardLookup.TryGetValue(id, out funcType);
     }
 
-    public static bool TryGetFunctionName(int funcType, out string? name)
+    /// <summary>
+    /// Attempts to retrieve the function name associated with the specified function type ID.
+    /// </summary>
+    /// <param name="funcType">The function type ID.</param>
+    /// <param name="id">When this method returns, contains the function ID if found.</param>
+    /// <returns><c>true</c> if the function ID was found; otherwise, <c>false</c>.</returns>
+    public static bool TryGetFunctionId(int funcType, out Guid id)
     {
-        return ReverseLookup.TryGetValue(funcType, out name);
+        return ReverseLookup.TryGetValue(funcType, out id);
     }
 
+    /// <summary>
+    /// Clears all registered function type lookups.
+    /// </summary>
     public static void Clear()
     {
         ForwardLookup.Clear();
         ReverseLookup.Clear();
+        Interlocked.Exchange(ref _customFunctionCount, 0);
     }
 }
