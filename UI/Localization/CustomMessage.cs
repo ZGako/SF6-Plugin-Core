@@ -35,6 +35,11 @@ public class CustomMessage : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    internal void EnsureRegistration()
+    {
+        MessageRegistry.RegisterCustomMessage(this);
+    }
+
 
     /// <summary>
     ///     Adds or updates a translation for a specific language.

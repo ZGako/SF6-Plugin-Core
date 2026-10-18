@@ -13,16 +13,14 @@ public class UICustomElementRequestNode(Guid functionId, IUICustomTrainingElemen
         var customElementData = _customInitializer.InitializeCustomElement(_functionId);
 
         _childDataArrayMo?.ReleaseIfGlobalized();
-        _childDataArrayMo = null;
+        // create a new array (a bit of a waste to do it every time, but it shouldn't happen often enough to really matter anyways)
+        _childDataArrayMo = app.training.TrainingMenuData.REFType.CreateManagedArray((uint)_childNodes.Count);
+        _childDataArrayMo.Globalize();
 
         // now we traverse the child nodes recursively and build their data
         // on the way up we add the hooks and create the childData arrays
         if (_childNodes.Count > 0)
         {
-            // create a new array
-            _childDataArrayMo = app.training.TrainingMenuData.REFType.CreateManagedArray((uint)_childNodes.Count);
-            _childDataArrayMo.Globalize();
-
             var childDataArray = _childDataArrayMo.As<app.training.TrainingMenuData_Array1D>();
 
             for (var i = 0; i < _childNodes.Count; i++)

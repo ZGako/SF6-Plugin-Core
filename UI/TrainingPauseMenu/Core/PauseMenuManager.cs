@@ -29,6 +29,20 @@ public static class PauseMenuManager
         return (uiDataMo as IObject)?.GetField("_MenuData") as ManagedObject;
     }
 
+    private static void SetUIDataMo(ManagedObject menuDataArrayMo)
+    {
+        var trainingManagerMo = API.GetManagedSingleton("app.training.TrainingManager")
+                                ?? throw new InvalidOperationException("TrainingManager is not initialized.");
+
+        var uiDataMo = (trainingManagerMo as IObject)?.GetField("_UIData") as ManagedObject
+                       ?? throw new InvalidOperationException("_UIData is null.");
+
+        var menuDataField = uiDataMo.GetTypeDefinition()!.GetField("_MenuData")
+                            ?? throw new InvalidOperationException("_MenuData field not found on _UIData.");
+
+        menuDataField.SetDataBoxed(uiDataMo.GetAddress(), menuDataArrayMo, false);
+    }
+
     private static void RebuildUI()
     {
         if (!ModificationLock.IsHeldByCurrentThread)
@@ -63,17 +77,26 @@ public static class PauseMenuManager
 
             // Restore the original fields of the current element from the cached element before applying any modifications
             if (childIterator == 0)
-                if (currentNode.CachedElement != null && currentElementMo != null)
+            {
+                if (currentNode == RootNode)
                 {
-                    // released the childArray of the ingame object, since we might've modified it (by creating a new one) and we don't want to leak memory when reassigning it the cached one.
+                    if (currentNode.CachedElement != null)
+                    {
+                        // Only release childArrayMo if it was a custom array from a previous rebuild, not the cached original
+                        if (childArrayMo != null && childArrayMo.GetAddress() != currentNode.CachedElement.GetAddress())
+                            childArrayMo.ReleaseIfGlobalized();
+                        SetUIDataMo(currentNode.CachedElement);
+                        childArrayMo = currentNode.CachedElement;
+                    }
+                }
+                else if (currentNode.CachedElement != null && currentElementMo != null)
+                {
                     childArrayMo?.ReleaseIfGlobalized();
-
                     var typeDef = app.training.TrainingMenuData.REFType;
-
                     currentElementMo.CopyFieldsFrom(currentNode.CachedElement, typeDef);
-
                     childArrayMo = (currentElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
                 }
+            }
 
 
             if (childIterator < currentNode.Children.Count)
@@ -101,87 +124,69 @@ public static class PauseMenuManager
             // ------------------------------------------
             else
             {
-                if (currentNode == RootNode) continue; // Skip root as it doesn't represent an element
-
-
-                if (currentNode.CachedElement != null && currentElementMo != null)
+                if (currentNode.CachedElement != null && (currentNode == RootNode || currentElementMo != null))
                 {
-                    // If there are no modifications, we can release the cached element to free up memory (only after we restored it, which we just did)
-
                     var hasModifications = currentNode.ReorderRequest != null ||
                                            currentNode.Appends.Count > 0 ||
                                            currentNode.Hooks.Count > 0;
+
                     if (!hasModifications)
                     {
-                        // Release logic
                         currentNode.CachedElement.ReleaseIfGlobalized();
                         currentNode.CachedElement = null;
-                        // API.LogInfo($"Released cached element at node with {currentNode.Children.Count} children as it has no modifications.");
                         continue;
                     }
 
-                    var currentElement = currentElementMo.As<app.training.TrainingMenuData>();
+                    var currentElement = currentElementMo?.As<app.training.TrainingMenuData>();
 
-                    // Apply the hook requests to the current element.
-
-                    // in this loop we only ever add hooks for original game elements, because of this we want to register the 
-                    // functionType in the function registry ourselves
-                    if (currentNode.Hooks.Count > 0)
+                    if (currentNode.Hooks.Count > 0 && currentElement != null)
                     {
                         var functionId = FunctionTypeRegistry.RegisterGameFunctionType(currentElement.FuncType);
                         foreach (var hookRequest in currentNode.Hooks) hookRequest.AddHook(functionId);
                     }
 
-                    // Gather all the appendElement requests inside a single array of lists
-                    var originalChildLength = currentElement.ChildData.Length;
+                    // Use childArrayMo so this works identically for both RootNode (_MenuData) and child nodes (_ChildData)
+                    var originalChildArray = childArrayMo!.As<app.training.TrainingMenuData_Array1D>()!;
+                    var originalChildLength = originalChildArray.Length;
+
                     var allNewElements = new List<app.training.TrainingMenuData>[originalChildLength + 2];
-                    // initialize the lists to avoid null reference exceptions
                     for (var i = 0; i < allNewElements.Length; i++) allNewElements[i] = [];
 
                     foreach (var appendRequest in currentNode.Appends)
                     {
                         var newElements = appendRequest.GetAppendList(originalChildLength);
-
                         for (var i = 0; i < newElements.Length; i++)
                         {
                             var elementsForIndex = newElements[i];
-
                             if (elementsForIndex != null && i < allNewElements.Length)
                                 allNewElements[i].AddRange(elementsForIndex);
                         }
                     }
 
-                    // Create a new array
                     var newArrMo =
                         app.training.TrainingMenuData.REFType.CreateManagedArray(
                             (uint)(originalChildLength + allNewElements.Sum(list => list.Count)));
                     newArrMo.Globalize();
-
                     var newArr = newArrMo.As<app.training.TrainingMenuData_Array1D>();
 
-                    // Copy the original elements and append the new elements after each one.
-                    // if there is a ReorderRequest, we reorder the original elements according to the new order whilst interleaving the new elements at their respective original indices.
                     var newIndex = 0;
-
-                    // first we insert the elements at index 0 (which go before the first original element)
                     foreach (var newElement in allNewElements[0]) newArr[newIndex++] = newElement;
 
                     for (var targetIndex = 0; targetIndex < originalChildLength; targetIndex++)
                     {
                         var originalIndex = currentNode.ReorderRequest?.GetMapping(targetIndex) ?? targetIndex;
+                        newArr[newIndex++] = originalChildArray[originalIndex];
 
-                        // Copy the original element to the new array at the mapped index
-                        newArr[newIndex++] = currentElement.ChildData[originalIndex];
-
-                        // Append any new elements for this original index
                         foreach (var newElement in allNewElements[originalIndex + 1]) newArr[newIndex++] = newElement;
                     }
 
-                    // insert the elements at the end of the array (which go after the last element)
                     foreach (var newElement in allNewElements[originalChildLength + 1]) newArr[newIndex++] = newElement;
 
-                    // Replace the original array with the new array
-                    currentElement.ChildData = newArr;
+                    // Assign back to _UIData._MenuData for RootNode, or _ChildData for regular elements
+                    if (currentNode == RootNode)
+                        SetUIDataMo(newArrMo);
+                    else
+                        currentElement!.ChildData = newArr;
                 }
             }
         }
@@ -189,84 +194,76 @@ public static class PauseMenuManager
 
     public static void RegisterModification(List<int> traversalPath, IUIModificationRequest modificationRequest)
     {
-        // Add the modification request to the parent node's list
-
         if (!ModificationLock.IsHeldByCurrentThread)
             throw new InvalidOperationException("RegisterModification must be called inside a ModifyUI call.");
 
         var currentNode = RootNode;
-        var gameUIDataMo = GetUIDataMo();
+        // If RootNode was already modified, start traversal from the cached original _MenuData array
+        var gameUIDataMo = RootNode.CachedElement ?? GetUIDataMo();
+        ManagedObject? targetElementMo = null;
 
-        // traverse both trees and cache 
-        for (var i = 0; i < traversalPath.Count; i++)
+        // Traverse down to the target node (runs 0 times if traversalPath is empty)
+        foreach (var index in traversalPath)
         {
-            var index = traversalPath[i];
-
-            var gameUIDataArray = gameUIDataMo?.As<_System.Array>() ??
-                                  throw new InvalidCastException("UIData is not a valid array. Cannot traverse.");
-
-            // get the cached node at the current index
-
-            // node should never be null here, but the compiler complains anyway
-            if (currentNode == null)
-                throw new InvalidOperationException($"Current node is null at index {index}. Cannot traverse further.");
+            var gameUIDataArray = gameUIDataMo?.As<_System.Array>()
+                                  ?? throw new InvalidCastException("UIData is not a valid array. Cannot traverse.");
 
             var childNode = currentNode[index];
             if (childNode == null)
             {
-                childNode = new UICachedDataNode(null); // Replace with your actual variables
+                childNode = new UICachedDataNode(null);
                 currentNode[index] = childNode;
             }
 
-            if (i == traversalPath.Count - 1)
-            {
-                currentNode[index] ??= new UICachedDataNode(null);
+            targetElementMo = childNode.CachedElement
+                              ?? gameUIDataArray.GetValue(index) as ManagedObject
+                              ?? throw new InvalidOperationException(
+                                  $"Element at index {index} is null or not a ManagedObject. Cannot copy fields.");
 
-                // cache the element by copying the entire element at the current index
-
-                if (currentNode[index]!.CachedElement == null)
-                {
-                    var elementCopyMo = app.training.TrainingMenuData.REFType.CreateInstance(0);
-                    var typeDef = app.training.TrainingMenuData.REFType;
-                    elementCopyMo.Globalize();
-
-                    var originalElementMo = gameUIDataArray.GetValue(index) as ManagedObject
-                                            ?? throw new InvalidOperationException(
-                                                $"Element at index {index} is null or not a ManagedObject. Cannot copy fields.");
-
-                    elementCopyMo.CopyFieldsFrom(originalElementMo, typeDef);
-
-                    // store the copied element in the cached node
-                    currentNode[index]!.CachedElement = elementCopyMo;
-                }
-
-                var success = modificationRequest switch
-                {
-                    ReorderRequest reorderRequest => currentNode[index]!.RequestReorder(reorderRequest),
-                    PauseMenuAppendElementsRequest appendRequest => currentNode[index]!.RequestAppend(appendRequest),
-                    IUIHookRequest hookRequest => currentNode[index]!.RequestHook(hookRequest),
-                    _ => throw new InvalidOperationException(
-                        $"Unknown modification request type: {modificationRequest.GetType().Name}")
-                };
-                if (success)
-                {
-                    ModificationRequestPaths[modificationRequest] = traversalPath;
-                    if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.Claim();
-                }
-                else
-                {
-                    API.LogWarning(
-                        $"Modification request of type {modificationRequest.GetType().Name} is already registered at index {index}. Cannot register again.");
-                }
-
-                return;
-            }
-
-            // get the UIData note
-            var nextElementMo = childNode.CachedElement ?? gameUIDataArray.GetValue(index) as ManagedObject;
-            gameUIDataMo = (nextElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
-
+            gameUIDataMo = (targetElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
             currentNode = childNode;
+        }
+
+        // Cache the original data on the target node if not cached yet
+        if (currentNode.CachedElement == null)
+        {
+            if (currentNode == RootNode)
+            {
+                // For RootNode, cache the original _MenuData array itself
+                var originalMenuDataMo = GetUIDataMo()
+                                         ?? throw new InvalidOperationException("_MenuData is null.");
+                originalMenuDataMo.Globalize();
+                RootNode.CachedElement = originalMenuDataMo;
+            }
+            else
+            {
+                var typeDef = app.training.TrainingMenuData.REFType;
+                var elementCopyMo = typeDef.CreateInstance(0);
+                elementCopyMo.Globalize();
+                elementCopyMo.CopyFieldsFrom(targetElementMo!, typeDef);
+                currentNode.CachedElement = elementCopyMo;
+            }
+        }
+
+        // Register the request on currentNode (which is RootNode when traversalPath is empty)
+        var success = modificationRequest switch
+        {
+            ReorderRequest reorderRequest => currentNode.RequestReorder(reorderRequest),
+            PauseMenuAppendElementsRequest appendRequest => currentNode.RequestAppend(appendRequest),
+            IUIHookRequest hookRequest when currentNode != RootNode => currentNode.RequestHook(hookRequest),
+            _ => throw new InvalidOperationException(
+                $"Unknown or invalid modification request type: {modificationRequest.GetType().Name}")
+        };
+
+        if (success)
+        {
+            ModificationRequestPaths[modificationRequest] = traversalPath;
+            if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.Claim();
+        }
+        else
+        {
+            API.LogWarning(
+                $"Modification request of type {modificationRequest.GetType().Name} is already registered at this path. Cannot register again.");
         }
     }
 
@@ -274,46 +271,15 @@ public static class PauseMenuManager
     {
         if (!ModificationLock.IsHeldByCurrentThread)
             throw new InvalidOperationException("UnregisterModification must be called inside a ModifyUI call.");
-        // Remove the modification request from the parent node's list
 
         if (!ModificationRequestPaths.TryRemove(modificationRequest, out var traversalPath)) return;
 
         if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.ReleaseClaim();
 
-        // traverse the cached tree to find the modification request and remove it
         var currentNode = RootNode;
         for (var i = 0; i < traversalPath.Count; i++)
         {
             var index = traversalPath[i];
-
-            if (i == traversalPath.Count - 1)
-            {
-                if (currentNode[index] == null)
-                {
-                    API.LogWarning($"Cached node at index {index} is null. Cannot unregister modification request.");
-                    return;
-                }
-
-                switch (modificationRequest)
-                {
-                    case ReorderRequest _:
-                        currentNode[index]!.ClearReorderRequest();
-                        break;
-                    case PauseMenuAppendElementsRequest appendRequest:
-                        currentNode[index]!.ClearAppendRequest(appendRequest);
-                        break;
-                    case IUIHookRequest hookRequest:
-                        currentNode[index]!.ClearDHookRequest(hookRequest);
-                        break;
-                    default:
-                        throw new InvalidOperationException(
-                            $"Unknown modification request type: {modificationRequest.GetType().Name}");
-                }
-
-                return;
-            }
-
-            // traverse to the next child node
             if (currentNode[index] == null)
             {
                 API.LogWarning($"Cached node at index {index} is null. Cannot traverse further.");
@@ -321,6 +287,22 @@ public static class PauseMenuManager
             }
 
             currentNode = currentNode[index]!;
+        }
+
+        switch (modificationRequest)
+        {
+            case ReorderRequest:
+                currentNode.ClearReorderRequest();
+                break;
+            case PauseMenuAppendElementsRequest appendRequest:
+                currentNode.ClearAppendRequest(appendRequest);
+                break;
+            case IUIHookRequest hookRequest:
+                currentNode.ClearDHookRequest(hookRequest);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown modification request type: {modificationRequest.GetType().Name}");
         }
     }
 

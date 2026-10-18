@@ -55,6 +55,9 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
             // if the MO was already created, we simply return the existing instance with the newly registered functionNameId 
             // (which gets reset each time Build is being called anyways)
 
+            // ensure registration
+            EnsureMessageRegistration();
+
             if (_customElementDataMo != null)
             {
                 var existingElement = _customElementDataMo.As<app.training.TrainingMenuData>();
@@ -116,6 +119,15 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
 
             _customElementDataMo?.ReleaseIfGlobalized();
             _customElementDataMo = null;
+        }
+
+        private void EnsureMessageRegistration()
+        {
+            MessageID?.EnsureRegistration();
+            SubMessageID?.EnsureRegistration();
+            GuideMessage?.EnsureRegistration();
+            GuideMessageID?.EnsureRegistration();
+            EndWordsGuid?.EnsureRegistration();
         }
     }
 }
