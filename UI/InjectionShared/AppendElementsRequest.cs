@@ -1,7 +1,6 @@
-using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
+namespace SF6_Plugin_Core.UI.InjectionShared;
 
 /// <summary>
 /// </summary>
@@ -11,17 +10,20 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 ///     we use indexing starting from 1. So if you put 0, you want the element at the top of the page.
 ///     -1 is the convention for "add to the end"
 /// </param>
-public class AppendElementsRequest(List<(int, UICustomElementRequestNode)> newElements) : ExclusiveModificationRequest
+public class AppendElementsRequest<TNode, TType, TInstantiation>(
+    List<(int, TNode)> newElements) : ExclusiveModificationRequest
+    where TInstantiation : IUICustomElementInitialization<TType>
+    where TNode : UICustomRequestNode<TType, TInstantiation>
 {
     // sort the new elements by their order index
-    private List<(int, UICustomElementRequestNode)> NewElements { get; } = newElements;
+    private List<(int, TNode)> NewElements { get; } = newElements;
 
-    public List<app.training.TrainingMenuData>[] GetAppendList(int originalArrayLength)
+    public List<TType>[] GetAppendList(int originalArrayLength)
     {
         // Slot 0: Top of page
         // Slots 1..originalArrayLength: Attached after original element (index - 1)
         // Slot originalArrayLength + 1: Bottom of page (when index == -1)
-        var appendList = new List<app.training.TrainingMenuData>[originalArrayLength + 2];
+        var appendList = new List<TType>[originalArrayLength + 2];
 
         foreach (var (index, elementNode) in NewElements)
         {
@@ -41,9 +43,9 @@ public class AppendElementsRequest(List<(int, UICustomElementRequestNode)> newEl
         foreach (var (_, elementNode) in NewElements) elementNode.Clear();
     }
 
-    public override AppendElementsRequest Clone()
+    public override AppendElementsRequest<TNode, TType, TInstantiation> Clone()
     {
         var clonedElements = NewElements.Select(e => (e.Item1, e.Item2)).ToList();
-        return new AppendElementsRequest(clonedElements);
+        return new AppendElementsRequest<TNode, TType, TInstantiation>(clonedElements);
     }
 }

@@ -32,9 +32,12 @@ public interface IUIHookRequest : IUIModificationRequest
     void ClearHook();
 }
 
-public interface CustomUIElementInterface<out T>
+public interface IUICustomElementInitialization<out TType>
 {
-    T Build();
+    TType InitializeCustomElement(Guid functionNameId);
 
+    // message strings handling and stuff. Also Release the managed object created
     void Clear();
+
+    public TType GetElementData();
 }

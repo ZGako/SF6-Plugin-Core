@@ -5,7 +5,7 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
 public abstract class CustomElementBase(CustomElementBase.CustomElementInitializer initializer)
-    : IUICustomElementInitialization
+    : IUICustomTrainingElementInitialization
 {
     protected readonly CustomElementInitializer _initializer = initializer;
 
@@ -24,7 +24,7 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
         return _initializer.GetElementData();
     }
 
-    protected class CustomElementInitializer : IUICustomElementInitialization
+    protected class CustomElementInitializer : IUICustomTrainingElementInitialization
     {
         // class specific fields
         private ManagedObject? _customElementDataMo;

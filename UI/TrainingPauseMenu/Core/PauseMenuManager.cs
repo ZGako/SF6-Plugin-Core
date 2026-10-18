@@ -3,7 +3,6 @@
 using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
-using SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
@@ -244,7 +243,7 @@ public static class PauseMenuManager
                 var success = modificationRequest switch
                 {
                     ReorderRequest reorderRequest => currentNode[index]!.RequestReorder(reorderRequest),
-                    AppendElementsRequest appendRequest => currentNode[index]!.RequestAppend(appendRequest),
+                    PauseMenuAppendElementsRequest appendRequest => currentNode[index]!.RequestAppend(appendRequest),
                     IUIHookRequest hookRequest => currentNode[index]!.RequestHook(hookRequest),
                     _ => throw new InvalidOperationException(
                         $"Unknown modification request type: {modificationRequest.GetType().Name}")
@@ -300,7 +299,7 @@ public static class PauseMenuManager
                     case ReorderRequest _:
                         currentNode[index]!.ClearReorderRequest();
                         break;
-                    case AppendElementsRequest appendRequest:
+                    case PauseMenuAppendElementsRequest appendRequest:
                         currentNode[index]!.ClearAppendRequest(appendRequest);
                         break;
                     case IUIHookRequest hookRequest:
@@ -368,8 +367,8 @@ public static class PauseMenuManager
 
         public ReorderRequest? ReorderRequest { get; private set; } // optional reorder request
 
-        private List<AppendElementsRequest> AppendRequests { get; } = []; // list of append requests
-        public System.Collections.Generic.IReadOnlyList<AppendElementsRequest> Appends => AppendRequests;
+        private List<PauseMenuAppendElementsRequest> AppendRequests { get; } = []; // list of append requests
+        public System.Collections.Generic.IReadOnlyList<PauseMenuAppendElementsRequest> Appends => AppendRequests;
 
         private List<IUIHookRequest> HookRequests { get; } = []; // list of hook requests
         public System.Collections.Generic.IReadOnlyList<IUIHookRequest> Hooks => HookRequests;
@@ -410,13 +409,13 @@ public static class PauseMenuManager
             ReorderRequest = null;
         }
 
-        public bool RequestAppend(AppendElementsRequest appendRequest)
+        public bool RequestAppend(PauseMenuAppendElementsRequest appendRequest)
         {
             AppendRequests.Add(appendRequest);
             return true;
         }
 
-        public void ClearAppendRequest(AppendElementsRequest appendRequest)
+        public void ClearAppendRequest(PauseMenuAppendElementsRequest appendRequest)
         {
             appendRequest.Reset();
             AppendRequests.Remove(appendRequest);

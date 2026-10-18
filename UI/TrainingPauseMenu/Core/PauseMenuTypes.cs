@@ -1,14 +1,15 @@
+using SF6_Plugin_Core.UI.InjectionShared;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
+
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-public interface IUICustomElementInitialization
-{
-    app.training.TrainingMenuData InitializeCustomElement(Guid functionNameId);
+public interface IUICustomTrainingElementInitialization : IUICustomElementInitialization<app.training.TrainingMenuData>;
 
-    // message strings handling and stuff. Also Release the managed object created
-    void Clear();
-
-    public app.training.TrainingMenuData GetElementData();
-}
+public class
+    PauseMenuAppendElementsRequest(
+        List<(int, UICustomElementRequestNode)>
+            newElements) : AppendElementsRequest<UICustomElementRequestNode, app.training.TrainingMenuData,
+    IUICustomTrainingElementInitialization>(newElements);
 
 public readonly struct TrainingFuncOrGuid
 {
