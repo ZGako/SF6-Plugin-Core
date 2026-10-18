@@ -1,11 +1,10 @@
 using SF6_Plugin_Core.UI.InjectionShared;
-using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
-
-public class FunctionHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate) : ExclusiveModificationRequest, IUIHookRequest
+public class FunctionHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate)
+    : ExclusiveModificationRequest, IUIHookRequest
 {
     private readonly TrainingFunctionHooks.FunctionDelegate _functionDelegate = functionDelegate;
 
@@ -28,7 +27,8 @@ public class FunctionHookRequest(TrainingFunctionHooks.FunctionDelegate function
     }
 }
 
-public class OptionSelectHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate) : ExclusiveModificationRequest, IUIHookRequest
+public class OptionSelectHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate)
+    : ExclusiveModificationRequest, IUIHookRequest
 {
     private readonly TrainingFunctionHooks.FunctionDelegate _functionDelegate = functionDelegate;
 
@@ -51,7 +51,8 @@ public class OptionSelectHookRequest(TrainingFunctionHooks.FunctionDelegate func
     }
 }
 
-public class OptionXHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate) : ExclusiveModificationRequest, IUIHookRequest
+public class OptionXHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate)
+    : ExclusiveModificationRequest, IUIHookRequest
 {
     private readonly TrainingFunctionHooks.FunctionDelegate _functionDelegate = functionDelegate;
 
@@ -74,7 +75,8 @@ public class OptionXHookRequest(TrainingFunctionHooks.FunctionDelegate functionD
     }
 }
 
-public class OptionYHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate) : ExclusiveModificationRequest, IUIHookRequest
+public class OptionYHookRequest(TrainingFunctionHooks.FunctionDelegate functionDelegate)
+    : ExclusiveModificationRequest, IUIHookRequest
 {
     private readonly TrainingFunctionHooks.FunctionDelegate _functionDelegate = functionDelegate;
 

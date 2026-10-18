@@ -31,3 +31,10 @@ public interface IUIHookRequest : IUIModificationRequest
     /// TODO: do I even need this if I clear everything from MenuManager on rebuild
     void ClearHook();
 }
+
+public interface CustomUIElementInterface<out T>
+{
+    T Build();
+
+    void Clear();
+}

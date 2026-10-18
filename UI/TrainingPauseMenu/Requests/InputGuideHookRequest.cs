@@ -1,11 +1,10 @@
 using SF6_Plugin_Core.UI.InjectionShared;
-using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
-
-public class InputGuideHookRequest(InputGuideHook.InputGuideDelegate action) : ExclusiveModificationRequest, IUIHookRequest
+public class InputGuideHookRequest(InputGuideHook.InputGuideDelegate action)
+    : ExclusiveModificationRequest, IUIHookRequest
 {
     private readonly InputGuideHook.InputGuideDelegate _action = action;
 

@@ -1,43 +1,35 @@
 namespace SF6_Plugin_Core.UI.Localization;
 
 /// <summary>
-/// A registry for managing custom messages and their GUIDs, 
-/// allowing for the replacement of game messages with custom ones.
+///     A registry for managing custom messages and their GUIDs,
+///     allowing for the replacement of game messages with custom ones.
 /// </summary>
 internal static class MessageRegistry
 {
-
     private static readonly ConcurrentDictionary<Guid, CustomMessage> CustomMessages = [];
 
-    [ThreadStatic]
-    private static CustomMessage? s_pendingMessageOverride;
+    [ThreadStatic] private static CustomMessage? s_pendingMessageOverride;
 
     /// <summary>
-    /// Registers a custom message.
+    ///     Registers a custom message.
     /// </summary>
     /// <param name="message">The custom message to register.</param>
     public static void RegisterCustomMessage(CustomMessage message)
     {
-        if (!CustomMessages.ContainsKey(message.Id))
-        {
-            CustomMessages[message.Id] = message;
-        }
+        if (!CustomMessages.ContainsKey(message.Id)) CustomMessages[message.Id] = message;
     }
 
     internal static void UnregisterCustomMessage(Guid id)
     {
-        if (CustomMessages.TryRemove(id, out var msg))
-        {
-            msg.ClearCachedEngineStrings();
-        }
+        if (CustomMessages.TryRemove(id, out var msg)) msg.ClearCachedEngineStrings();
     }
 
     [MethodHook(typeof(app.helper.hLocalize), "getMessage(System.Guid)", MethodHookType.Pre)]
     public static PreHookResult ReplaceMessageQuery(Span<ulong> args)
     {
         // read argument
-        IntPtr guidAddress = (IntPtr)args[1];
-        Guid requestedGuid = Marshal.PtrToStructure<Guid>(guidAddress);
+        var guidAddress = (IntPtr)args[1];
+        var requestedGuid = Marshal.PtrToStructure<Guid>(guidAddress);
 
         // API.LogInfo($"getMessage called with GUID: {requestedGuid}");
 
@@ -65,14 +57,11 @@ internal static class MessageRegistry
     }
 
     /// <summary>
-    /// Clears all registered custom messages.
+    ///     Clears all registered custom messages.
     /// </summary>
     public static void Clear()
     {
-        foreach (var msg in CustomMessages.Values)
-        {
-            msg.ClearCachedEngineStrings();
-        }
+        foreach (var msg in CustomMessages.Values) msg.ClearCachedEngineStrings();
         CustomMessages.Clear();
     }
 }

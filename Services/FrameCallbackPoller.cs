@@ -3,24 +3,16 @@ using System.Runtime.CompilerServices;
 namespace SF6_Plugin_Core.Services;
 
 /// <summary>
-/// A utility class that allows for polling a condition on the main thread, 
-/// executing callbacks when the condition is met or when a timeout occurs.
+///     A utility class that allows for polling a condition on the main thread,
+///     executing callbacks when the condition is met or when a timeout occurs.
 /// </summary>
 internal static class FrameCallbackPoller
 {
-    private readonly record struct PollJob(
-        Func<bool> Condition,
-        Action OnReady,
-        Action? OnAborted,
-        int MaxFrames,
-        StrongBox<int> FramesWaited
-    );
-
     private static readonly ConcurrentQueue<PollJob> s_jobs = new();
 
     /// <summary>
-    /// Queues a polling job to wait until a condition is met (such as an asynchronous prefab asset becoming ready), 
-    /// executing <paramref name="onReady"/> on success or <paramref name="onAborted"/> upon timeout.
+    ///     Queues a polling job to wait until a condition is met (such as an asynchronous prefab asset becoming ready),
+    ///     executing <paramref name="onReady" /> on success or <paramref name="onAborted" /> upon timeout.
     /// </summary>
     /// <param name="condition">The condition evaluated every frame.</param>
     /// <param name="onReady">Callback invoked when the condition returns true.</param>
@@ -46,12 +38,12 @@ internal static class FrameCallbackPoller
     {
         if (s_jobs.IsEmpty) return;
 
-        int count = s_jobs.Count;
-        for (int i = 0; i < count; i++)
+        var count = s_jobs.Count;
+        for (var i = 0; i < count; i++)
         {
             if (!s_jobs.TryDequeue(out var job)) break;
 
-            bool isReady = false;
+            var isReady = false;
             try
             {
                 isReady = job.Condition();
@@ -81,10 +73,7 @@ internal static class FrameCallbackPoller
 
     internal static void Clear()
     {
-        while (s_jobs.TryDequeue(out var job))
-        {
-            SafeInvoke(job.OnAborted);
-        }
+        while (s_jobs.TryDequeue(out var job)) SafeInvoke(job.OnAborted);
     }
 
     private static void SafeInvoke(Action? action)
@@ -98,4 +87,12 @@ internal static class FrameCallbackPoller
             API.LogError($"[MainThreadPoller] Callback threw exception: {ex}");
         }
     }
+
+    private readonly record struct PollJob(
+        Func<bool> Condition,
+        Action OnReady,
+        Action? OnAborted,
+        int MaxFrames,
+        StrongBox<int> FramesWaited
+    );
 }

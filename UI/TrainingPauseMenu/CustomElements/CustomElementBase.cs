@@ -1,15 +1,34 @@
-
 using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.Localization;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
-
-public abstract class CustomElementBase(CustomElementBase.CustomElementInitializer initializer) : IUICustomElementInitialization
+public abstract class CustomElementBase(CustomElementBase.CustomElementInitializer initializer)
+    : IUICustomElementInitialization
 {
+    protected readonly CustomElementInitializer _initializer = initializer;
+
+    public app.training.TrainingMenuData InitializeCustomElement(Guid functionNameId)
+    {
+        return _initializer.InitializeCustomElement(functionNameId);
+    }
+
+    public void Clear()
+    {
+        _initializer.Clear();
+    }
+
+    public app.training.TrainingMenuData GetElementData()
+    {
+        return _initializer.GetElementData();
+    }
+
     protected class CustomElementInitializer : IUICustomElementInitialization
     {
+        // class specific fields
+        private ManagedObject? _customElementDataMo;
+
         // fields of the TrainingMenuData class
         public app.training.ItemType Type { get; init; } = app.training.ItemType.TEXT_ONLY;
         public bool IsEnabled { get; init; } = true;
@@ -31,9 +50,6 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
         public int SlotID { get; init; }
         public app.training.eVisibleCase VisibleCase { get; init; } = app.training.eVisibleCase.Visible;
 
-
-        // class specific fields
-        private ManagedObject? _customElementDataMo;
         public app.training.TrainingMenuData InitializeCustomElement(Guid functionNameId)
         {
             // if the MO was already created, we simply return the existing instance with the newly registered functionNameId 
@@ -42,7 +58,8 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
             if (_customElementDataMo != null)
             {
                 var existingElement = _customElementDataMo.As<app.training.TrainingMenuData>();
-                existingElement.FuncType = (app.training.TrainingFuncType)FunctionTypeRegistry.RegisterNewFunctionType(functionNameId);
+                existingElement.FuncType =
+                    (app.training.TrainingFuncType)FunctionTypeRegistry.RegisterNewFunctionType(functionNameId);
                 return existingElement;
             }
 
@@ -53,7 +70,8 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
             var newElement = newElementMo.As<app.training.TrainingMenuData>();
             // set the non value-type fields
             newElement.Type = Type;
-            newElement.FuncType = (app.training.TrainingFuncType)FunctionTypeRegistry.RegisterNewFunctionType(functionNameId);
+            newElement.FuncType =
+                (app.training.TrainingFuncType)FunctionTypeRegistry.RegisterNewFunctionType(functionNameId);
             newElement.IsEnabled = IsEnabled;
             newElement.IsCantFocus = IsCantFocus;
             newElement.IsForceFocus = IsForceFocus;
@@ -67,29 +85,14 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
             newElement.SlotID = SlotID;
             newElement.VisibleCase = VisibleCase;
 
-            if (MessageID != null)
-            {
-                newElementMo.SetGuidField("_MessageID", MessageID.Id);
-            }
+            if (MessageID != null) newElementMo.SetGuidField("_MessageID", MessageID.Id);
 
-            if (SubMessageID != null)
-            {
-                newElementMo.SetGuidField("_SubMessageID", SubMessageID.Id);
-            }
+            if (SubMessageID != null) newElementMo.SetGuidField("_SubMessageID", SubMessageID.Id);
 
-            if (GuideMessage != null)
-            {
-                newElementMo.SetGuidField("_GuideMessage", GuideMessage.Id);
-            }
+            if (GuideMessage != null) newElementMo.SetGuidField("_GuideMessage", GuideMessage.Id);
 
-            if (GuideMessageID != null)
-            {
-                newElementMo.SetGuidField("_GuideMessageID", GuideMessageID.Id);
-            }
-            if (EndWordsGuid != null)
-            {
-                newElementMo.SetGuidField("_EndWordsGuid", EndWordsGuid.Id);
-            }
+            if (GuideMessageID != null) newElementMo.SetGuidField("_GuideMessageID", GuideMessageID.Id);
+            if (EndWordsGuid != null) newElementMo.SetGuidField("_EndWordsGuid", EndWordsGuid.Id);
 
             newElement.LimitValue.x = LimitValue.Item1;
             newElement.LimitValue.y = LimitValue.Item2;
@@ -99,7 +102,8 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
 
         public app.training.TrainingMenuData GetElementData()
         {
-            return _customElementDataMo?.As<app.training.TrainingMenuData>() ?? throw new InvalidOperationException("Custom element data has not been initialized.");
+            return _customElementDataMo?.As<app.training.TrainingMenuData>() ??
+                   throw new InvalidOperationException("Custom element data has not been initialized.");
         }
 
         public void Clear()
@@ -113,22 +117,5 @@ public abstract class CustomElementBase(CustomElementBase.CustomElementInitializ
             _customElementDataMo?.ReleaseIfGlobalized();
             _customElementDataMo = null;
         }
-    }
-
-    protected readonly CustomElementInitializer _initializer = initializer;
-
-    public app.training.TrainingMenuData InitializeCustomElement(Guid functionNameId)
-    {
-        return _initializer.InitializeCustomElement(functionNameId);
-    }
-
-    public void Clear()
-    {
-        _initializer.Clear();
-    }
-
-    public app.training.TrainingMenuData GetElementData()
-    {
-        return _initializer.GetElementData();
     }
 }

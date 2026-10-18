@@ -3,9 +3,9 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
-public class UICustomElementNode(Guid functionId, IUICustomElementInitialization customInitializer)
+public class UICustomElementRequestNode(Guid functionId, IUICustomElementInitialization customInitializer)
 {
-    private readonly List<UICustomElementNode> _childNodes = [];
+    private readonly List<UICustomElementRequestNode> _childNodes = [];
     private readonly IUICustomElementInitialization _customInitializer = customInitializer;
     private readonly Guid _functionId = functionId;
 
@@ -13,12 +13,12 @@ public class UICustomElementNode(Guid functionId, IUICustomElementInitialization
 
     private ManagedObject? _childDataArrayMo;
 
-    public void AddChildren(List<UICustomElementNode> children)
+    public void AddChildren(List<UICustomElementRequestNode> children)
     {
         _childNodes.AddRange(children);
     }
 
-    public void RemoveChildren(List<UICustomElementNode> children)
+    public void RemoveChildren(List<UICustomElementRequestNode> children)
     {
         foreach (var child in children)
             if (_childNodes.Remove(child))
