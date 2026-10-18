@@ -1,6 +1,7 @@
 // Core usings
 
 using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 

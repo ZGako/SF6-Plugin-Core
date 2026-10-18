@@ -1,3 +1,4 @@
+using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
