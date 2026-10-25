@@ -1,5 +1,3 @@
-using SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
-
 namespace SF6_Plugin_Core.UI.InjectionShared;
 
 /// <summary>
@@ -16,7 +14,7 @@ public class AppendElementsRequest<TNode, TType, TInstantiation>(
     where TNode : UICustomRequestNode<TType, TInstantiation>
 {
     // sort the new elements by their order index
-    private List<(int, TNode)> NewElements { get; } = newElements;
+    protected List<(int, TNode)> NewElements { get; } = newElements;
 
     public List<TType>[] GetAppendList(int originalArrayLength)
     {

@@ -1,0 +1,84 @@
+﻿using SF6_Plugin_Core.UI.OptionsSettings.Core;
+
+namespace SF6_Plugin_Core.UI.OptionsSettings.CustomOptions;
+
+public abstract class CustomOptionValue : CustomOptionBase, IUICustomOptionsValueElementInitialization
+{
+    protected ManagedObject? _valueDataMo;
+    protected ManagedObject? _valueSettingsMo;
+    protected int MaxValue { get; init; }
+    protected int MinValue { get; init; }
+    protected int InitValue { get; init; }
+
+    protected override app.Option.SettingDataType SettingDataType { get; init; } = app.Option.SettingDataType.Value;
+
+    public override app.Option.OptionValueUnit InitializeCustomElement(Guid functionNameId)
+    {
+        EnsureMessageRegistration();
+
+        if (_customOptionDataMo != null)
+        {
+            var existingValue = _customOptionDataMo.As<app.Option.OptionValueUnit>();
+            var regType = OptionTypeRegistry.RegisterNewOptionType(functionNameId);
+            existingValue.Setting.ValueType = (app.Option.ValueType)regType;
+            existingValue.ValueData.TypeId = regType;
+            existingValue.ValueSetting.TypeId = regType;
+            return existingValue;
+        }
+
+        var newValueType = OptionTypeRegistry.RegisterNewOptionType(functionNameId);
+
+        var newOptionDataMo = app.Option.OptionValueUnit.REFType.CreateInstance(0);
+        newOptionDataMo.Globalize();
+        _customOptionDataMo = newOptionDataMo;
+
+
+        var newSettingsMo = app.Option.OptionSettingUnit.REFType.CreateInstance(0);
+        newSettingsMo.Globalize();
+        _settingsUnitMo = newSettingsMo;
+
+        InitializeUnitBase();
+
+        var settingsUnit = _settingsUnitMo.As<app.Option.OptionSettingUnit>();
+
+        settingsUnit.ValueType = (app.Option.ValueType)newValueType;
+
+        var newOptionData = _customOptionDataMo.As<app.Option.OptionValueUnit>();
+
+        // TODO: need to create the ValueData shit too
+        _valueDataMo = app.Option.OptionValueData.REFType.CreateInstance(0);
+        _valueDataMo.Globalize();
+
+        var valueData = _valueDataMo.As<app.Option.OptionValueData>();
+        valueData.TypeId = newValueType;
+
+        _valueSettingsMo = app.Option.OptionValueSetting.REFType.CreateInstance(0);
+        _valueSettingsMo.Globalize();
+
+        var valueSettings = _valueSettingsMo.As<app.Option.OptionValueSetting>();
+        valueSettings.TypeId = newValueType;
+        valueSettings.MaxValue = MaxValue;
+        valueSettings.MinValue = MinValue;
+        valueSettings.InitValue = InitValue;
+
+        newOptionData.ValueData = valueData;
+        newOptionData.ValueSetting = valueSettings;
+
+        return newOptionData;
+    }
+
+    public override app.Option.OptionValueUnit GetElementData()
+    {
+        return _customOptionDataMo?.As<app.Option.OptionValueUnit>() ??
+               throw new InvalidOperationException("Custom element data has not been initialized.");
+    }
+
+    public override void Clear()
+    {
+        base.Clear();
+        _valueDataMo?.ReleaseIfGlobalized();
+        _valueDataMo = null;
+        _valueSettingsMo?.ReleaseIfGlobalized();
+        _valueSettingsMo = null;
+    }
+}

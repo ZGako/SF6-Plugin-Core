@@ -1,44 +1,86 @@
-﻿using SF6_Plugin_Core.UI.OptionsSettings.Core;
+﻿using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.UI.Localization;
 
 namespace SF6_Plugin_Core.UI.OptionsSettings.CustomOptions;
 
-public abstract class CustomOptionBase(CustomOptionBase.CustomOptionInitializer initializer)
-    : IUICustomOptionsElementInitialization
+public abstract class CustomOptionBase : IUICustomOptionsElementInitialization
 {
-    protected readonly CustomOptionInitializer _initializer = initializer;
+    protected readonly List<CustomMessage> ValueMessageList = [];
+    protected CustomMessage? DescriptionMessage;
+    protected CustomMessage? TitleMessage;
+    protected ManagedObject? _customOptionDataMo;
+    protected ManagedObject? _settingsUnitMo;
+    protected bool isOnline;
 
-    public app.Option.OptionUnitBase InitializeCustomElement(Guid functionNameId)
+    // prevents outside packages from deriving from the base class directly
+    internal CustomOptionBase()
     {
-        return _initializer.InitializeCustomElement(functionNameId);
     }
 
-    public void Clear()
+    protected abstract app.Option.SettingDataType SettingDataType { get; init; }
+    protected app.Option.SupportModeType SupportModeType { get; init; } = app.Option.SupportModeType.All;
+    protected app.Option.SupportPlatform SupportPlatform { get; init; } = app.Option.SupportPlatform.All;
+    protected app.Option.UnitInputType UnitInputType { get; init; } = app.Option.UnitInputType.Button_Type0;
+    protected app.Option.ValueType ValueType { get; init; } = app.Option.ValueType.Invalid;
+    protected app.Option.GroupType GroupType { get; init; } = app.Option.GroupType.Invalid;
+    protected app.Option.DecideEventType DecideEventType { get; init; } = app.Option.DecideEventType.Invalid;
+
+    protected app.Option.ExtraButtonEventType ExtraButtonEventType { get; init; } =
+        app.Option.ExtraButtonEventType.Invalid;
+
+    public abstract app.Option.OptionUnitBase InitializeCustomElement(Guid functionNameId);
+
+    public abstract app.Option.OptionUnitBase GetElementData();
+
+    public virtual void Clear()
     {
-        _initializer.Clear();
+        DescriptionMessage?.Dispose();
+        TitleMessage?.Dispose();
+
+        foreach (var message in ValueMessageList) message.Dispose();
+        ValueMessageList.Clear();
+
+        _customOptionDataMo?.ReleaseIfGlobalized();
+        _customOptionDataMo = null;
+
+        _settingsUnitMo?.ReleaseIfGlobalized();
+        _settingsUnitMo = null;
     }
 
-    public app.Option.OptionUnitBase GetElementData()
+    protected void EnsureMessageRegistration()
     {
-        return _initializer.GetElementData();
+        TitleMessage?.EnsureRegistration();
+        DescriptionMessage?.EnsureRegistration();
+        foreach (var message in ValueMessageList) message.EnsureRegistration();
     }
 
-    protected class CustomOptionInitializer : IUICustomOptionsElementInitialization
+    protected void InitializeUnitBase()
     {
-        // class specific fields
-        private ManagedObject? _customOptionDataMo;
+        if (_customOptionDataMo == null)
+            throw new InvalidOperationException("_customOptionDataMo has not been initialized.");
 
-        public void Clear()
-        {
-        }
+        var newOptionData = _customOptionDataMo.As<app.Option.OptionUnitBase>();
 
-        public app.Option.OptionUnitBase InitializeCustomElement(Guid functionNameId)
-        {
-            throw new NotImplementedException();
-        }
+        if (_settingsUnitMo == null)
+            throw new InvalidOperationException("_settingsUnitMo has not been initialized.");
 
-        public app.Option.OptionUnitBase GetElementData()
-        {
-            throw new NotImplementedException();
-        }
+        var settingsUnit = _settingsUnitMo.As<app.Option.OptionSettingUnit>();
+
+        settingsUnit.DataType = SettingDataType;
+        settingsUnit.InputType = UnitInputType;
+        settingsUnit.SupportModeType = SupportModeType;
+        settingsUnit.SupportPlatform = SupportPlatform;
+        settingsUnit.IsOnlineSetting = isOnline;
+        settingsUnit.EventType = DecideEventType;
+        settingsUnit.ExtraEventType = ExtraButtonEventType;
+
+        if (TitleMessage != null) _settingsUnitMo.SetGuidField("TitleMessage", TitleMessage.Id);
+        if (DescriptionMessage != null) _settingsUnitMo.SetGuidField("DescriptionMessage", DescriptionMessage.Id);
+
+        // TODO: the value message lists
+
+        settingsUnit.ChangeValueSETriggerId = 0xFFFFFFFF;
+
+        newOptionData.Setting = settingsUnit;
     }
 }

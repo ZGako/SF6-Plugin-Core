@@ -1,9 +1,10 @@
+global using IUICustomTrainingElementInitialization =
+    SF6_Plugin_Core.UI.InjectionShared.IUICustomElementInitialization<app.training.TrainingMenuData>;
 using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
-namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
-public interface IUICustomTrainingElementInitialization : IUICustomElementInitialization<app.training.TrainingMenuData>;
+namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 public class
     PauseMenuAppendElementsRequest(
