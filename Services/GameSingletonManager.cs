@@ -45,6 +45,11 @@ public static class GameSingletonManager
     /// </summary>
     public static app.GuiManager? GuiManager { get; private set; }
 
+    /// <summary>
+    ///     Gets the current <see cref="OptionManager" /> instance, or <see langword="null" /> when it is unavailable.
+    /// </summary>
+    public static app.OptionManager? OptionManager { get; private set; }
+
     [Callback(typeof(UpdateBehavior), CallbackType.Pre)]
     public static void OnUpdateBehaviorCallback()
     {
@@ -234,6 +239,22 @@ public static class GameSingletonManager
         }, false, onReady, null);
     }
 
+    /// <summary>
+    ///     Registers a callback to run when <see cref="OptionManager" /> becomes available.
+    /// </summary>
+    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    public static void RegisterOptionManager(Action onReady)
+    {
+        RegisterSingleton(GameSingletonTypes.OptionManager, () =>
+        {
+            var optionManager = API.GetManagedSingletonT<app.OptionManager>();
+            if (optionManager == null) return false;
+
+            OptionManager = optionManager;
+            return true;
+        }, false, onReady, null);
+    }
+
     internal static void Clear()
     {
         SingletonReadyStates.Clear();
@@ -245,6 +266,7 @@ public static class GameSingletonManager
         BFlowManager = null;
         ResourceManager = null;
         GuiManager = null;
+        OptionManager = null;
     }
 
     private enum GameSingletonTypes
@@ -255,8 +277,9 @@ public static class GameSingletonManager
         NetworkManager,
         bFlowManager,
         ResourceManager, // technically not a singleton, but I'd like to have a callback to it
+        GuiManager,
+        OptionManager
 
-        GuiManager
         // Add others here later
     }
 

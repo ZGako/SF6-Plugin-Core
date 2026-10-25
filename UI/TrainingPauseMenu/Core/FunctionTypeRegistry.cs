@@ -72,7 +72,7 @@ internal static class FunctionTypeRegistry
     /// </summary>
     /// <param name="funcType">The function type ID.</param>
     /// <param name="id">When this method returns, contains the function ID if found.</param>
-    /// <returns><c>true</c> if the function ID was found; otherwise, <c>false</c>.</returns>
+    /// <returns><c>true</c> if the function type was found; otherwise, <c>false</c>.</returns>
     public static bool TryGetFunctionId(int funcType, out Guid id)
     {
         return ReverseLookup.TryGetValue(funcType, out id);

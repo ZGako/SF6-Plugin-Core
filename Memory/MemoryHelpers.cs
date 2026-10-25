@@ -118,6 +118,77 @@ public static class MemoryHelpers
     }
 
     /// <summary>
+    ///     Creates a new instance of System.Collections.Generic.List<T> in the RE Engine VM.
+    /// </summary>
+    public static ManagedObject? CreateGenericList<T>(bool globalize = true) where T : class
+    {
+        var closedListRuntimeType = ListTypeCache<T>.ClosedListRuntimeType;
+        var createInstanceMethod = ListReflectionCache.CreateInstanceMethod;
+
+        if (closedListRuntimeType == null || createInstanceMethod == null)
+        {
+            API.LogError(
+                $"[MemoryHelpers] Failed to resolve cached RuntimeType or Activator for List<{typeof(T).FullName}>.");
+            return null;
+        }
+
+        var newListMo = createInstanceMethod.InvokeBoxed(
+            typeof(ManagedObject),
+            null,
+            new object[] { closedListRuntimeType }
+        ) as ManagedObject;
+
+        if (newListMo == null)
+        {
+            API.LogError($"[MemoryHelpers] Activator.CreateInstance failed for List<{typeof(T).FullName}>.");
+            return null;
+        }
+
+        if (globalize)
+            newListMo.Globalize();
+
+        return newListMo;
+    }
+
+    // public static ManagedObject? CreateGenericList<T>(bool globalize = true) where T : class
+    // {
+    //     var tdb = API.GetTDB();
+    //
+    //     // system.type typedef
+    //     var sysTypeDef = tdb.FindType("System.Type");
+    //     // get elementRuntime type
+    //     var elemRuntimeType = TypeDefCache<T>.RequestedType?.RuntimeType;
+    //     // Get the RuntimeType of the open generic: typeof(System.Collections.Generic.List<>)
+    //     var openListRuntimeType = tdb.FindType("System.Collections.Generic.List`1")?.RuntimeType;
+    //     if (openListRuntimeType == null)
+    //     {
+    //         var getTypeMethod = sysTypeDef.GetMethod("GetType(System.String)");
+    //         var typeNameStr = VM.CreateString("System.Collections.Generic.List`1");
+    //         openListRuntimeType =
+    //             getTypeMethod.InvokeBoxed(typeof(ManagedObject), null, [typeNameStr]) as ManagedObject;
+    //     }
+    //
+    //     // create an array to be able to create with said type as its backing array
+    //     var typeArrayMo = sysTypeDef.CreateManagedArray(1);
+    //     typeArrayMo.As<_System.Array>().SetValue(elemRuntimeType, 0);
+    //
+    //     var closedListRuntimeType = (openListRuntimeType as IObject)
+    //         .Call("MakeGenericType(System.Type[])", typeArrayMo) as ManagedObject;
+    //
+    //     // Create the actual List<app.Option.OptionUnitBase> instance from closedListRuntimeType
+    //     var activatorType = tdb.FindType("System.Activator");
+    //     var createInstanceMethod = activatorType.GetMethod("CreateInstance(System.Type)");
+    //
+    //     var newListMo = createInstanceMethod.InvokeBoxed(
+    //         typeof(ManagedObject),
+    //         null,
+    //         [closedListRuntimeType]
+    //     ) as ManagedObject;
+    //
+    //     return newListMo;
+    // }
+
+    /// <summary>
     ///     A nested static class that caches the TypeDefinition of a given type T for fast access.
     /// </summary>
     /// <typeparam name="T"></typeparam>
@@ -133,6 +204,68 @@ public static class MemoryHelpers
             // Your exact reflection logic, but it only ever runs once!
             RequestedType = (typeof(T).GetField("REFType", flags)?.GetValue(null)
                              ?? typeof(T).GetProperty("REFType", flags)?.GetValue(null)) as TypeDefinition;
+        }
+    }
+
+    /// <summary>
+    ///     Caches global reflection metadata needed to construct generic List<T> instances.
+    /// </summary>
+    private static class ListReflectionCache
+    {
+        public static readonly TypeDefinition? SysTypeDef;
+        public static readonly ManagedObject? OpenListRuntimeType;
+        public static readonly Method? CreateInstanceMethod;
+
+        static ListReflectionCache()
+        {
+            var tdb = API.GetTDB();
+            SysTypeDef = tdb.FindType("System.Type");
+
+            OpenListRuntimeType = tdb.FindType("System.Collections.Generic.List`1")?.RuntimeType;
+            if (OpenListRuntimeType == null && SysTypeDef != null)
+            {
+                var getTypeMethod = SysTypeDef.GetMethod("GetType(System.String)");
+                var typeNameStr = VM.CreateString("System.Collections.Generic.List`1");
+                OpenListRuntimeType = getTypeMethod?.InvokeBoxed(
+                    typeof(ManagedObject),
+                    null,
+                    new object[] { typeNameStr }
+                ) as ManagedObject;
+            }
+
+            OpenListRuntimeType?.Globalize();
+
+            var activatorType = tdb.FindType("System.Activator");
+            CreateInstanceMethod = activatorType?.GetMethod("CreateInstance(System.Type)");
+        }
+    }
+
+    /// <summary>
+    ///     Caches the closed System.RuntimeType for List<T> using the exact MakeGenericType method.
+    /// </summary>
+    private static class ListTypeCache<T> where T : class
+    {
+        public static readonly ManagedObject? ClosedListRuntimeType;
+
+        static ListTypeCache()
+        {
+            // 1. Get the RuntimeType of the element T
+            var elemRuntimeType = TypeDefCache<T>.RequestedType?.RuntimeType;
+            var openListRuntimeType = ListReflectionCache.OpenListRuntimeType;
+            var sysTypeDef = ListReflectionCache.SysTypeDef;
+
+            if (elemRuntimeType == null || openListRuntimeType == null || sysTypeDef == null)
+                return;
+
+            // 2. Create System.Type[] containing elemRuntimeType
+            var typeArrayMo = sysTypeDef.CreateManagedArray(1);
+            typeArrayMo.As<_System.Array>().SetValue(elemRuntimeType, 0);
+
+            // 3. Build the closed RuntimeType via MakeGenericType
+            ClosedListRuntimeType = (openListRuntimeType as IObject)
+                ?.Call("MakeGenericType(System.Type[])", typeArrayMo) as ManagedObject;
+
+            ClosedListRuntimeType?.Globalize();
         }
     }
 }
