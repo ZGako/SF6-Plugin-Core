@@ -10,45 +10,92 @@ public static class GameSingletonManager
     private static readonly ConcurrentDictionary<GameSingletonTypes, SingletonHooks> RegisteredSingletons = [];
 
     // Publicly accessible singleton instances
+
     /// <summary>
     ///     Gets the current <see cref="TrainingManager" /> instance, or <see langword="null" /> when it is unavailable.
     /// </summary>
-    public static app.training.TrainingManager? TrainingManager { get; private set; }
+    public static app.training.TrainingManager? TrainingManager
+    {
+        get
+        {
+            if (field != null) return field;
+            var tm = API.GetManagedSingletonT<app.training.TrainingManager>();
+            if (tm != null && tm.IsInit) field = tm;
+
+            return field;
+        }
+        private set;
+    }
 
     /// <summary>
     ///     Gets the current <see cref="UIAgentManager" /> instance, or <see langword="null" /> when it is unavailable.
     /// </summary>
-    public static app.UIAgentManager? UIAgentManager { get; private set; }
+    public static app.UIAgentManager? UIAgentManager
+    {
+        get => field ??= API.GetManagedSingletonT<app.UIAgentManager>();
+        private set;
+    }
 
     /// <summary>
     ///     Gets the current <see cref="UIPrefabManager" /> instance, or <see langword="null" /> when it is unavailable.
     /// </summary>
-    public static app.UIPrefabManager? UIPrefabManager { get; private set; }
+    public static app.UIPrefabManager? UIPrefabManager
+    {
+        get => field ??= API.GetManagedSingletonT<app.UIPrefabManager>();
+        private set;
+    }
 
     /// <summary>
     ///     Gets the current <see cref="NetworkManager" /> instance, or <see langword="null" /> when it is unavailable.
     /// </summary>
-    public static app.network.NetworkManager? NetworkManager { get; private set; }
+    public static app.network.NetworkManager? NetworkManager
+    {
+        get => field ??= API.GetManagedSingletonT<app.network.NetworkManager>();
+        private set;
+    }
 
     /// <summary>
     ///     Gets the current <see cref="BFlowManager" /> instance, or <see langword="null" /> when it is unavailable.
     /// </summary>
-    public static app.bFlowManager? BFlowManager { get; private set; }
+    public static app.bFlowManager? BFlowManager
+    {
+        get => field ??= API.GetManagedSingletonT<app.bFlowManager>();
+        private set;
+    }
 
     /// <summary>
     ///     Gets the current <see cref="ResourceManager" /> instance, or <see langword="null" /> when it is unavailable.
     /// </summary>
-    public static ResourceManager? ResourceManager { get; private set; }
+    public static ResourceManager? ResourceManager
+    {
+        get => field ??= API.GetResourceManager();
+        private set;
+    }
 
     /// <summary>
     ///     Gets the current <see cref="GuiManager" /> instance, or <see langword="null" /> when it is unavailable.
     /// </summary>
-    public static app.GuiManager? GuiManager { get; private set; }
+    public static app.GuiManager? GuiManager
+    {
+        get => field ??= API.GetManagedSingletonT<app.GuiManager>();
+        private set;
+    }
 
     /// <summary>
     ///     Gets the current <see cref="OptionManager" /> instance, or <see langword="null" /> when it is unavailable.
     /// </summary>
-    public static app.OptionManager? OptionManager { get; private set; }
+    public static app.OptionManager? OptionManager
+    {
+        get
+        {
+            if (field != null) return field;
+            var om = API.GetManagedSingletonT<app.OptionManager>();
+            if (om != null && om.mInitEndFlag) field = om;
+
+            return field;
+        }
+        private set;
+    }
 
     [Callback(typeof(UpdateBehavior), CallbackType.Pre)]
     public static void OnUpdateBehaviorCallback()
@@ -103,15 +150,7 @@ public static class GameSingletonManager
     /// <param name="onRelease">The action to invoke when the singleton is released, if provided.</param>
     public static void RegisterTrainingManager(Action onReady, Action? onRelease = null)
     {
-        RegisterSingleton(GameSingletonTypes.TrainingManager, () =>
-        {
-            var tm = API.GetManagedSingletonT<app.training.TrainingManager>();
-            if (tm == null) return false;
-            if (!tm.IsInit) return false;
-
-            TrainingManager = tm;
-            return true;
-        }, true, onReady, onRelease);
+        RegisterSingleton(GameSingletonTypes.TrainingManager, () => TrainingManager != null, true, onReady, onRelease);
     }
 
     /// <summary>
@@ -149,14 +188,7 @@ public static class GameSingletonManager
     /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
     public static void RegisterUIAgentManager(Action onReady)
     {
-        RegisterSingleton(GameSingletonTypes.UIAgentManager, () =>
-        {
-            var uiAgentManager = API.GetManagedSingletonT<app.UIAgentManager>();
-            if (uiAgentManager == null) return false;
-
-            UIAgentManager = uiAgentManager;
-            return true;
-        }, false, onReady, null);
+        RegisterSingleton(GameSingletonTypes.UIAgentManager, () => UIAgentManager != null, false, onReady, null);
     }
 
     /// <summary>
@@ -165,14 +197,7 @@ public static class GameSingletonManager
     /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
     public static void RegisterUIPrefabManager(Action onReady)
     {
-        RegisterSingleton(GameSingletonTypes.UIPrefabManager, () =>
-        {
-            var uiPrefabManager = API.GetManagedSingletonT<app.UIPrefabManager>();
-            if (uiPrefabManager == null) return false;
-
-            UIPrefabManager = uiPrefabManager;
-            return true;
-        }, false, onReady, null);
+        RegisterSingleton(GameSingletonTypes.UIPrefabManager, () => UIPrefabManager != null, false, onReady, null);
     }
 
     /// <summary>
@@ -181,14 +206,7 @@ public static class GameSingletonManager
     /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
     public static void RegisterNetworkManager(Action onReady)
     {
-        RegisterSingleton(GameSingletonTypes.NetworkManager, () =>
-        {
-            var networkManager = API.GetManagedSingletonT<app.network.NetworkManager>();
-            if (networkManager == null) return false;
-
-            NetworkManager = networkManager;
-            return true;
-        }, false, onReady, null);
+        RegisterSingleton(GameSingletonTypes.NetworkManager, () => NetworkManager != null, false, onReady, null);
     }
 
     /// <summary>
@@ -197,14 +215,7 @@ public static class GameSingletonManager
     /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
     public static void RegisterBFlowManager(Action onReady)
     {
-        RegisterSingleton(GameSingletonTypes.bFlowManager, () =>
-        {
-            var bFlowManager = API.GetManagedSingletonT<app.bFlowManager>();
-            if (bFlowManager == null) return false;
-
-            BFlowManager = bFlowManager;
-            return true;
-        }, false, onReady, null);
+        RegisterSingleton(GameSingletonTypes.BattleFlowManager, () => BFlowManager != null, false, onReady, null);
     }
 
     /// <summary>
@@ -213,14 +224,7 @@ public static class GameSingletonManager
     /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
     public static void RegisterResourceManager(Action onReady)
     {
-        RegisterSingleton(GameSingletonTypes.ResourceManager, () =>
-        {
-            var resourceManager = API.GetResourceManager();
-            if (resourceManager == null) return false;
-
-            ResourceManager = resourceManager;
-            return true;
-        }, false, onReady, null);
+        RegisterSingleton(GameSingletonTypes.ResourceManager, () => ResourceManager != null, false, onReady, null);
     }
 
     /// <summary>
@@ -229,30 +233,31 @@ public static class GameSingletonManager
     /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
     public static void RegisterGuiManager(Action onReady)
     {
-        RegisterSingleton(GameSingletonTypes.GuiManager, () =>
-        {
-            var guiManager = API.GetManagedSingletonT<app.GuiManager>();
-            if (guiManager == null) return false;
-
-            GuiManager = guiManager;
-            return true;
-        }, false, onReady, null);
+        RegisterSingleton(GameSingletonTypes.GuiManager, () => GuiManager != null, false, onReady, null);
     }
 
     /// <summary>
     ///     Registers a callback to run when <see cref="OptionManager" /> becomes available.
     /// </summary>
     /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
-    public static void RegisterOptionManager(Action onReady)
+    /// <param name="onLoadOverwrite">Action to invoke to unload the settings (after which the onReady function will be called again)</param>
+    public static void RegisterOptionManager(Action onReady, Action onLoadOverwrite)
     {
-        RegisterSingleton(GameSingletonTypes.OptionManager, () =>
+        RegisterSingleton(GameSingletonTypes.OptionManager, () => OptionManager != null, true, onReady, onLoadOverwrite);
+    }
+    
+    [MethodHook(typeof(app.OptionManager), "LoadValueData(app.Option.OptionSaveData)", MethodHookType.Post)]
+    public static void OnLoadValueData(ref ulong retval)
+    {
+        if (SingletonReadyStates.TryGetValue(GameSingletonTypes.OptionManager, out var isReady) && isReady)
         {
-            var optionManager = API.GetManagedSingletonT<app.OptionManager>();
-            if (optionManager == null) return false;
-
-            OptionManager = optionManager;
-            return true;
-        }, false, onReady, null);
+            if (RegisteredSingletons.TryGetValue(GameSingletonTypes.OptionManager, out var hooks))
+            {
+                hooks.InvokeOnRelease();
+                
+                hooks.InvokeOnReady();
+            }
+        }
     }
 
     internal static void Clear()
@@ -275,7 +280,7 @@ public static class GameSingletonManager
         UIAgentManager,
         UIPrefabManager,
         NetworkManager,
-        bFlowManager,
+        BattleFlowManager,
         ResourceManager, // technically not a singleton, but I'd like to have a callback to it
         GuiManager,
         OptionManager
@@ -285,11 +290,11 @@ public static class GameSingletonManager
 
     private class SingletonHooks
     {
-        public Func<bool> CheckIfReady { get; set; } = () => false;
+        public Func<bool> CheckIfReady { get; init; } = () => false;
 
         // Indicates whether the singleton gets reloaded multiple times during the game session (e.g., TrainingManager can be released and re-initialized)
         // if false, the action arrays will be cleared after being used
-        public bool MultipleCallsAllowed { get; set; }
+        public bool MultipleCallsAllowed { get; init; }
         public event Action? OnReady;
         public event Action? OnRelease;
 

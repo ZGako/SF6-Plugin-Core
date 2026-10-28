@@ -1,6 +1,7 @@
 // Core usings
 
 using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.Services;
 
 namespace SF6_Plugin_Core.UI.Helpers;
 
@@ -44,5 +45,28 @@ public static class UIHelpers
             .GetObjectAs<_System.Array>("Failed to retrieve children as _System.Array.");
 
         return guiChildrenArray;
+    }
+
+    /// <summary>
+    /// O(n) lookup of the UIAgent associated with the GameObject whose name is the input parameter.
+    /// </summary>
+    /// <remarks>
+    /// Make sure to store the UIAgent to avoid recalling this function.</remarks>
+    /// <param name="gameObjectName"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    public static app.UIAgent GetUIAgent(string gameObjectName)
+    {
+        var uiAgents = GameSingletonManager.UIAgentManager?._Entries 
+                          ?? throw new InvalidOperationException("Call this method only if you can guarantee the UIAgentManger exists");
+
+        // cannot use foreach it seems
+        for (var i = 0; i < uiAgents.Count; i++)
+        {
+            var agent = uiAgents[i].Agent;
+            if (agent.GameObject.Name ==  gameObjectName)
+                return agent;
+        }
+        throw new InvalidOperationException($"{gameObjectName} not found in UI Agent Manager");
     }
 }

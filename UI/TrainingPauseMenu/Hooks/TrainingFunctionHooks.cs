@@ -52,7 +52,7 @@ public static class TrainingFunctionHooks
 
     internal static void UnregisterCustomFunction(Guid id)
     {
-        CustomFunctions.Remove(id, out var _);
+        CustomFunctions.TryRemove(id, out var _);
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc), "Function", MethodHookType.Pre)]
@@ -114,7 +114,7 @@ public static class TrainingFunctionHooks
 
     internal static void UnregisterCustomOptionSelectFunction(Guid id)
     {
-        CustomOptionSelectFunctions.Remove(id, out var _);
+        CustomOptionSelectFunctions.TryRemove(id, out var _);
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc),
@@ -184,7 +184,7 @@ public static class TrainingFunctionHooks
 
     internal static void UnregisterCustomOptionXFunction(Guid id)
     {
-        CustomOptionXFunctions.Remove(id, out var _);
+        CustomOptionXFunctions.TryRemove(id, out var _);
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc),
@@ -241,7 +241,7 @@ public static class TrainingFunctionHooks
 
     internal static void UnregisterCustomOptionYFunction(Guid id)
     {
-        CustomOptionYFunctions.Remove(id, out var _);
+        CustomOptionYFunctions.TryRemove(id, out var _);
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc),

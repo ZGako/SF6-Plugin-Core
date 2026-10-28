@@ -24,6 +24,7 @@ public abstract class CustomOptionBase : IUICustomOptionsElementInitialization
     protected app.Option.ValueType ValueType { get; init; } = app.Option.ValueType.Invalid;
     protected app.Option.GroupType GroupType { get; init; } = app.Option.GroupType.Invalid;
     protected app.Option.DecideEventType DecideEventType { get; init; } = app.Option.DecideEventType.Invalid;
+    
 
     protected app.Option.ExtraButtonEventType ExtraButtonEventType { get; init; } =
         app.Option.ExtraButtonEventType.Invalid;
@@ -78,6 +79,11 @@ public abstract class CustomOptionBase : IUICustomOptionsElementInitialization
         if (DescriptionMessage != null) _settingsUnitMo.SetGuidField("DescriptionMessage", DescriptionMessage.Id);
 
         // TODO: the value message lists
+        foreach (var message in ValueMessageList)
+        {
+            _System.Guid newEngineGuid = _System.Guid.Parse(message.Id.ToString());
+            settingsUnit.ValueMessageList.Add(newEngineGuid);
+        }
 
         settingsUnit.ChangeValueSETriggerId = 0xFFFFFFFF;
 

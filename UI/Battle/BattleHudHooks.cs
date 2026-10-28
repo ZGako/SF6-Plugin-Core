@@ -57,7 +57,7 @@ public static class BattleHudHooks
 
     [MethodHook(typeof(app.BattleHudManager), nameof(app.BattleHudManager.ManagerEvent_SetupHudEnd),
         MethodHookType.Post)]
-    public static void OnBattleHudSetupEndTest(ref ulong retval)
+    public static void OnBattleHudSetupEnd(ref ulong retval)
     {
         if (BattleHudSetupCallback == null) return; // No callbacks registered, exit early
 
@@ -76,7 +76,7 @@ public static class BattleHudHooks
 
 
     [MethodHook(typeof(app.BattleHudManager), nameof(app.BattleHudManager.HudEvent_Activate), MethodHookType.Post)]
-    public static void OnBattleHudSetupEnd(ref ulong retval)
+    public static void OnBattleHudActivate(ref ulong retval)
     {
         if (BattleHudActivateCallback == null) return; // No callbacks registered, exit early
 

@@ -6,7 +6,7 @@ internal static class OptionTypeRegistry
     private static readonly ConcurrentDictionary<int, Guid> ReverseLookup = [];
     private static int _customOptionCount;
 
-    private static readonly int OptionTypeMax;
+    public static readonly int OptionTypeMax;
 
     static OptionTypeRegistry()
     {

@@ -8,7 +8,14 @@ public abstract class CustomOptionValue : CustomOptionBase, IUICustomOptionsValu
     protected ManagedObject? _valueSettingsMo;
     protected int MaxValue { get; init; }
     protected int MinValue { get; init; }
+    /// <summary>
+    /// This is the "initial" value as in the default value, and what it will go back to when you press the "Reset to Defaults" button
+    /// </summary>
     protected int InitValue { get; init; }
+    /// <summary>
+    /// Use it as a way to initialize the current value based on your own config or similar
+    /// </summary>
+    protected int CurrentValue { get; init; }
 
     protected override app.Option.SettingDataType SettingDataType { get; init; } = app.Option.SettingDataType.Value;
 
@@ -45,12 +52,12 @@ public abstract class CustomOptionValue : CustomOptionBase, IUICustomOptionsValu
 
         var newOptionData = _customOptionDataMo.As<app.Option.OptionValueUnit>();
 
-        // TODO: need to create the ValueData shit too
         _valueDataMo = app.Option.OptionValueData.REFType.CreateInstance(0);
         _valueDataMo.Globalize();
 
         var valueData = _valueDataMo.As<app.Option.OptionValueData>();
         valueData.TypeId = newValueType;
+        valueData.Value = CurrentValue;
 
         _valueSettingsMo = app.Option.OptionValueSetting.REFType.CreateInstance(0);
         _valueSettingsMo.Globalize();

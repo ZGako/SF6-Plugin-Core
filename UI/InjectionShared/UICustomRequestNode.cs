@@ -7,6 +7,11 @@ public abstract class UICustomRequestNode<TType, TInstantiation>(Guid functionId
     protected readonly TInstantiation CustomInitializer = customInitializer;
     protected readonly Guid FunctionId = functionId;
 
+    public TType GetBuiltElement()
+    {
+        return CustomInitializer.GetElementData();
+    }
+
     protected readonly List<IUIHookRequest> HookInstructions = [];
 
     protected ManagedObject? ChildDataArrayMo;
