@@ -31,8 +31,6 @@ internal static class MessageRegistry
         var guidAddress = (IntPtr)args[1];
         var requestedGuid = Marshal.PtrToStructure<Guid>(guidAddress);
 
-        // API.LogInfo($"getMessage called with GUID: {requestedGuid}");
-
         // Check if we have a custom message for this GUID
         if (CustomMessages.TryGetValue(requestedGuid, out var customMsg))
         {

@@ -28,7 +28,6 @@ public static class OptionsHelpers
         {
             var part = partsGroup._Children[i];
             var uiPart = ManagedProxy<app.UIPartsOptionUnit>.Create(part);
-            API.LogInfo($"testing for {uiPart.UnitData.Setting.TypeId} and {optionType}");
             if (uiPart.UnitData.Setting.TypeId == optionType)
             {
                 result = uiPart;
