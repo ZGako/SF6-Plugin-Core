@@ -5,21 +5,33 @@ namespace SF6_Plugin_Core.UI.Localization;
 /// </summary>
 public class CustomMessage : IDisposable
 {
+    private const int LanguageCount = (int)via.Language.Max;
+
     // Cache the Engine-allocated ManagedObject strings
-    private readonly ManagedObject?[] _cachedEngineStrings = new ManagedObject[sizeof(via.Language)];
+    private readonly ManagedObject?[] _cachedEngineStrings = new ManagedObject[LanguageCount];
 
     // raw C# strings for each language
-    private readonly string[] _translations = new string[sizeof(via.Language)];
+    private readonly string[] _translations = new string[LanguageCount];
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="CustomMessage" /> class with the specified English fallback text.
+    ///     Initializes a CustomMessage using either raw English fallback text or a localization JSON key.
     /// </summary>
-    /// <param name="englishFallback">The fallback text in English used when other language translations are not provided.</param>
-    public CustomMessage(string englishFallback)
+    /// <param name="textOrKey">The English fallback string, or the JSON key if <paramref name="isKey" /> is true.</param>
+    /// <param name="isKey">If true, looks up the pre-built translation array in LocalizationManager.</param>
+    public CustomMessage(string textOrKey, bool isKey = false)
     {
         Id = Guid.NewGuid();
-        // Fill the array with the fallback text so missing translations don't show up blank
-        Array.Fill(_translations, englishFallback);
+
+        if (isKey && LocalizationManager.TryGetTranslations(textOrKey, out var cachedArray) && cachedArray != null)
+        {
+            // Clone into _translations so per-instance AddTranslation() calls don't mutate the shared cache
+            Array.Copy(cachedArray, _translations, LanguageCount);
+        }
+        else
+        {
+            if (isKey) API.LogWarning($"[Localization] Key '{textOrKey}' not found. Using key name as fallback.");
+            Array.Fill(_translations, textOrKey);
+        }
 
         MessageRegistry.RegisterCustomMessage(this);
     }
@@ -33,6 +45,14 @@ public class CustomMessage : IDisposable
     {
         MessageRegistry.UnregisterCustomMessage(Id);
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    ///     Optional readable factory alternative to passing 'true' in the constructor.
+    /// </summary>
+    public static CustomMessage FromKey(string key)
+    {
+        return new CustomMessage(key, true);
     }
 
     internal void EnsureRegistration()
@@ -62,7 +82,7 @@ public class CustomMessage : IDisposable
     /// <returns>The native memory address of the engine string.</returns>
     public ulong GetEngineStringAddress()
     {
-        var langIndex = (int)app.helper.hGUI.GetSystemLanguage();
+        var langIndex = (int)via.gui.GUISystem.MessageLanguage;
 
         // Lazy-load: Only allocate in the engine if it's actually requested
         if (_cachedEngineStrings[langIndex] == null)
