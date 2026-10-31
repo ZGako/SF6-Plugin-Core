@@ -19,7 +19,7 @@ public abstract class CustomOptionGroup : CustomOptionBase, IUICustomOptionsGrou
             var regType = OptionTypeRegistry.RegisterNewOptionType(functionNameId);
 
             var settingsUnit2 = _settingsUnitMo.As<app.Option.OptionSettingUnit>();
-            settingsUnit2.ValueType = (app.Option.ValueType)regType;
+            settingsUnit2.GroupType = (app.Option.GroupType)regType;
 
             existingGroup.Setting = settingsUnit2;
 
