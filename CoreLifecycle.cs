@@ -10,6 +10,7 @@ global using REFrameworkNET.Callbacks;
 using SF6_Plugin_Core.Services;
 using SF6_Plugin_Core.UI;
 using SF6_Plugin_Core.UI.Localization;
+using SF6_Plugin_Core.UI.OptionsSettings.Core;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core;
@@ -38,5 +39,8 @@ public static class CoreLifecycle
 
         // clear training pause menu
         PauseMenuManager.ClearTrainingPauseMenuHooks();
+
+        // clear options settings hook
+        OptionsSettingsManager.ClearOptionsSettingsHooks();
     }
 }

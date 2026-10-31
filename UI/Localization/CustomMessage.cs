@@ -9,6 +9,7 @@ public class CustomMessage : IDisposable
 
     // Cache the Engine-allocated ManagedObject strings
     private readonly ManagedObject?[] _cachedEngineStrings = new ManagedObject[LanguageCount];
+    private readonly bool _isGameMessage;
 
     // raw C# strings for each language
     private readonly string[] _translations = new string[LanguageCount];
@@ -36,6 +37,12 @@ public class CustomMessage : IDisposable
         MessageRegistry.RegisterCustomMessage(this);
     }
 
+    public CustomMessage(Guid existingGameId)
+    {
+        Id = existingGameId;
+        _isGameMessage = true;
+    }
+
     /// <summary>
     ///     Gets the unique identifier for the custom message.
     /// </summary>
@@ -43,6 +50,7 @@ public class CustomMessage : IDisposable
 
     public void Dispose()
     {
+        if (_isGameMessage) return;
         MessageRegistry.UnregisterCustomMessage(Id);
         GC.SuppressFinalize(this);
     }
@@ -57,6 +65,7 @@ public class CustomMessage : IDisposable
 
     internal void EnsureRegistration()
     {
+        if (_isGameMessage) return;
         MessageRegistry.RegisterCustomMessage(this);
     }
 

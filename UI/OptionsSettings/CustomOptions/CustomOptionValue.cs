@@ -8,12 +8,15 @@ public abstract class CustomOptionValue : CustomOptionBase, IUICustomOptionsValu
     protected ManagedObject? _valueSettingsMo;
     protected int MaxValue { get; init; }
     protected int MinValue { get; init; }
+
     /// <summary>
-    /// This is the "initial" value as in the default value, and what it will go back to when you press the "Reset to Defaults" button
+    ///     This is the "initial" value as in the default value, and what it will go back to when you press the "Reset to
+    ///     Defaults" button
     /// </summary>
     protected int InitValue { get; init; }
+
     /// <summary>
-    /// Use it as a way to initialize the current value based on your own config or similar
+    ///     Use it as a way to initialize the current value based on your own config or similar
     /// </summary>
     protected int CurrentValue { get; init; }
 
@@ -23,13 +26,24 @@ public abstract class CustomOptionValue : CustomOptionBase, IUICustomOptionsValu
     {
         EnsureMessageRegistration();
 
-        if (_customOptionDataMo != null)
+        if (_customOptionDataMo != null && _settingsUnitMo != null && _valueDataMo != null && _valueSettingsMo != null)
         {
             var existingValue = _customOptionDataMo.As<app.Option.OptionValueUnit>();
             var regType = OptionTypeRegistry.RegisterNewOptionType(functionNameId);
-            existingValue.Setting.ValueType = (app.Option.ValueType)regType;
-            existingValue.ValueData.TypeId = regType;
-            existingValue.ValueSetting.TypeId = regType;
+
+            var settingsUnit2 = _settingsUnitMo.As<app.Option.OptionSettingUnit>();
+            settingsUnit2.ValueType = (app.Option.ValueType)regType;
+
+            var valueData2 = _valueDataMo.As<app.Option.OptionValueData>();
+            valueData2.TypeId = regType;
+
+            var valueSettings2 = _valueSettingsMo.As<app.Option.OptionValueSetting>();
+            valueSettings2.TypeId = regType;
+
+            existingValue.Setting = settingsUnit2;
+            existingValue.ValueData = valueData2;
+            existingValue.ValueSetting = valueSettings2;
+
             return existingValue;
         }
 

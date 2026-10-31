@@ -21,7 +21,7 @@ public class SpinBoxOptionInitializer : CustomOptionValue
             else
                 API.LogWarning("Default value is outside the boundaries set by Min and Max values");
 
-            if (currentStartingValue >= MinValue && CurrentValue <= currentStartingValue)
+            if (currentStartingValue >= MinValue && currentStartingValue <= MaxValue)
                 CurrentValue = currentStartingValue;
             else
                 API.LogWarning("Starting value is outside the boundaries set by Min and Max values");

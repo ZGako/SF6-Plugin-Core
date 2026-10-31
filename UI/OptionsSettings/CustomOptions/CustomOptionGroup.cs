@@ -12,11 +12,17 @@ public abstract class CustomOptionGroup : CustomOptionBase, IUICustomOptionsGrou
     {
         EnsureMessageRegistration();
 
-        if (_customOptionDataMo != null)
+        if (_customOptionDataMo != null && _settingsUnitMo != null)
         {
             var existingGroup = _customOptionDataMo.As<app.Option.OptionGroupUnit>();
-            existingGroup.Setting.GroupType =
-                (app.Option.GroupType)OptionTypeRegistry.RegisterNewOptionType(functionNameId);
+
+            var regType = OptionTypeRegistry.RegisterNewOptionType(functionNameId);
+
+            var settingsUnit2 = _settingsUnitMo.As<app.Option.OptionSettingUnit>();
+            settingsUnit2.ValueType = (app.Option.ValueType)regType;
+
+            existingGroup.Setting = settingsUnit2;
+
             return existingGroup;
         }
 
