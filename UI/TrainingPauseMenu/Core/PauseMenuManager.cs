@@ -1,8 +1,8 @@
 // Core usings
-
 using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
@@ -15,7 +15,6 @@ public static class PauseMenuManager
         ModificationRequestPaths = []; // maps modification requests to their traversal paths in the cached data tree
 
     private static readonly UICachedDataNode RootNode = new(null); // root node of the cached data tree
-
     private static readonly Lock ModificationLock = new();
 
     private static ManagedObject? GetUIDataMo()
@@ -33,13 +32,10 @@ public static class PauseMenuManager
     {
         var trainingManagerMo = API.GetManagedSingleton("app.training.TrainingManager")
                                 ?? throw new InvalidOperationException("TrainingManager is not initialized.");
-
         var uiDataMo = (trainingManagerMo as IObject)?.GetField("_UIData") as ManagedObject
                        ?? throw new InvalidOperationException("_UIData is null.");
-
         var menuDataField = uiDataMo.GetTypeDefinition()!.GetField("_MenuData")
                             ?? throw new InvalidOperationException("_MenuData field not found on _UIData.");
-
         menuDataField.SetDataBoxed(uiDataMo.GetAddress(), menuDataArrayMo, false);
     }
 
@@ -54,7 +50,6 @@ public static class PauseMenuManager
         FunctionTypeRegistry.Clear();
 
         // traverse the cached data tree as a post-order DFS
-
         // during the DFS, we want to keep the gameUIData half an iteration behind on each call to be able to "restore" the original element's data before applying the modification requests
         Stack<(
             UICachedDataNode Node,
@@ -73,8 +68,6 @@ public static class PauseMenuManager
             // ------------------------------------------
             // PRE-ORDER / TRAVERSAL PHASE
             // ------------------------------------------
-
-
             // Restore the original fields of the current element from the cached element before applying any modifications
             if (childIterator == 0)
             {
@@ -85,19 +78,25 @@ public static class PauseMenuManager
                         // Only release childArrayMo if it was a custom array from a previous rebuild, not the cached original
                         if (childArrayMo != null && childArrayMo.GetAddress() != currentNode.CachedElement.GetAddress())
                             childArrayMo.ReleaseIfGlobalized();
+
                         SetUIDataMo(currentNode.CachedElement);
                         childArrayMo = currentNode.CachedElement;
                     }
                 }
                 else if (currentNode.CachedElement != null && currentElementMo != null)
                 {
-                    childArrayMo?.ReleaseIfGlobalized();
+                    if (childArrayMo != null)
+                    {
+                        var cachedChildArrayMo = (currentNode.CachedElement as IObject)?.GetField("_ChildData") as ManagedObject;
+                        if (cachedChildArrayMo == null || childArrayMo.GetAddress() != cachedChildArrayMo.GetAddress())
+                            childArrayMo.ReleaseIfGlobalized();
+                    }
+
                     var typeDef = app.training.TrainingMenuData.REFType;
                     currentElementMo.CopyFieldsFrom(currentNode.CachedElement, typeDef);
                     childArrayMo = (currentElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
                 }
             }
-
 
             if (childIterator < currentNode.Children.Count)
             {
@@ -127,6 +126,7 @@ public static class PauseMenuManager
                 if (currentNode.CachedElement != null && (currentNode == RootNode || currentElementMo != null))
                 {
                     var hasModifications = currentNode.ReorderRequest != null ||
+                                           currentNode.FieldOverrideRequest != null ||
                                            currentNode.Appends.Count > 0 ||
                                            currentNode.Hooks.Count > 0;
 
@@ -139,54 +139,61 @@ public static class PauseMenuManager
 
                     var currentElement = currentElementMo?.As<app.training.TrainingMenuData>();
 
+                    if (currentNode.FieldOverrideRequest != null && currentElement != null)
+                    {
+                        currentNode.FieldOverrideRequest.ApplyOverrides(currentElement);
+                    }
+
                     if (currentNode.Hooks.Count > 0 && currentElement != null)
                     {
                         var functionId = FunctionTypeRegistry.RegisterGameFunctionType(currentElement.FuncType);
                         foreach (var hookRequest in currentNode.Hooks) hookRequest.AddHook(functionId);
                     }
 
-                    // Use childArrayMo so this works identically for both RootNode (_MenuData) and child nodes (_ChildData)
-                    var originalChildArray = childArrayMo!.As<app.training.TrainingMenuData_Array1D>()!;
-                    var originalChildLength = originalChildArray.Length;
-
-                    var allNewElements = new List<app.training.TrainingMenuData>[originalChildLength + 2];
-                    for (var i = 0; i < allNewElements.Length; i++) allNewElements[i] = [];
-
-                    foreach (var appendRequest in currentNode.Appends)
+                    if (currentNode.ReorderRequest != null || currentNode.Appends.Count > 0)
                     {
-                        var newElements = appendRequest.GetAppendList(originalChildLength);
-                        for (var i = 0; i < newElements.Length; i++)
+                        // Use childArrayMo so this works identically for both RootNode (_MenuData) and child nodes (_ChildData)
+                        var originalChildArray = childArrayMo?.As<app.training.TrainingMenuData_Array1D>();
+                        var originalChildLength = originalChildArray?.Length ?? 0;
+
+                        var allNewElements = new List<app.training.TrainingMenuData>[originalChildLength + 2];
+                        for (var i = 0; i < allNewElements.Length; i++) allNewElements[i] = [];
+
+                        foreach (var appendRequest in currentNode.Appends)
                         {
-                            var elementsForIndex = newElements[i];
-                            if (elementsForIndex != null && i < allNewElements.Length)
-                                allNewElements[i].AddRange(elementsForIndex);
+                            var newElements = appendRequest.GetAppendList(originalChildLength);
+                            for (var i = 0; i < newElements.Length; i++)
+                            {
+                                var elementsForIndex = newElements[i];
+                                if (elementsForIndex != null && i < allNewElements.Length)
+                                    allNewElements[i].AddRange(elementsForIndex);
+                            }
                         }
+
+                        var newArrMo =
+                            app.training.TrainingMenuData.REFType.CreateManagedArray(
+                                (uint)(originalChildLength + allNewElements.Sum(list => list.Count)));
+                        newArrMo.Globalize();
+                        var newArr = newArrMo.As<app.training.TrainingMenuData_Array1D>();
+
+                        var newIndex = 0;
+                        foreach (var newElement in allNewElements[0]) newArr[newIndex++] = newElement;
+
+                        for (var targetIndex = 0; targetIndex < originalChildLength; targetIndex++)
+                        {
+                            var originalIndex = currentNode.ReorderRequest?.GetMapping(targetIndex) ?? targetIndex;
+                            newArr[newIndex++] = originalChildArray![originalIndex];
+                            foreach (var newElement in allNewElements[originalIndex + 1]) newArr[newIndex++] = newElement;
+                        }
+
+                        foreach (var newElement in allNewElements[originalChildLength + 1]) newArr[newIndex++] = newElement;
+
+                        // Assign back to _UIData._MenuData for RootNode, or _ChildData for regular elements
+                        if (currentNode == RootNode)
+                            SetUIDataMo(newArrMo);
+                        else
+                            currentElement!.ChildData = newArr;
                     }
-
-                    var newArrMo =
-                        app.training.TrainingMenuData.REFType.CreateManagedArray(
-                            (uint)(originalChildLength + allNewElements.Sum(list => list.Count)));
-                    newArrMo.Globalize();
-                    var newArr = newArrMo.As<app.training.TrainingMenuData_Array1D>();
-
-                    var newIndex = 0;
-                    foreach (var newElement in allNewElements[0]) newArr[newIndex++] = newElement;
-
-                    for (var targetIndex = 0; targetIndex < originalChildLength; targetIndex++)
-                    {
-                        var originalIndex = currentNode.ReorderRequest?.GetMapping(targetIndex) ?? targetIndex;
-                        newArr[newIndex++] = originalChildArray[originalIndex];
-
-                        foreach (var newElement in allNewElements[originalIndex + 1]) newArr[newIndex++] = newElement;
-                    }
-
-                    foreach (var newElement in allNewElements[originalChildLength + 1]) newArr[newIndex++] = newElement;
-
-                    // Assign back to _UIData._MenuData for RootNode, or _ChildData for regular elements
-                    if (currentNode == RootNode)
-                        SetUIDataMo(newArrMo);
-                    else
-                        currentElement!.ChildData = newArr;
                 }
             }
         }
@@ -250,6 +257,7 @@ public static class PauseMenuManager
         {
             ReorderRequest reorderRequest => currentNode.RequestReorder(reorderRequest),
             PauseMenuAppendElementsRequest appendRequest => currentNode.RequestAppend(appendRequest),
+            FieldOverrideRequest overrideRequest when currentNode != RootNode => currentNode.RequestFieldOverride(overrideRequest),
             IUIHookRequest hookRequest when currentNode != RootNode => currentNode.RequestHook(hookRequest),
             _ => throw new InvalidOperationException(
                 $"Unknown or invalid modification request type: {modificationRequest.GetType().Name}")
@@ -297,6 +305,9 @@ public static class PauseMenuManager
             case PauseMenuAppendElementsRequest appendRequest:
                 currentNode.ClearAppendRequest(appendRequest);
                 break;
+            case FieldOverrideRequest:
+                currentNode.ClearFieldOverrideRequest();
+                break;
             case IUIHookRequest hookRequest:
                 currentNode.ClearDHookRequest(hookRequest);
                 break;
@@ -343,15 +354,12 @@ public static class PauseMenuManager
             Comparer<(int index, UICachedDataNode node)>.Create((a, b) => a.index.CompareTo(b.index));
 
         public ManagedObject? CachedElement { get; set; } = cachedElement;
-
         private List<(int, UICachedDataNode)> ChildNodes { get; } = []; // child nodes for the tree structure
         public System.Collections.Generic.IReadOnlyList<(int Index, UICachedDataNode Node)> Children => ChildNodes;
-
         public ReorderRequest? ReorderRequest { get; private set; } // optional reorder request
-
+        public FieldOverrideRequest? FieldOverrideRequest { get; private set; } // optional field override request
         private List<PauseMenuAppendElementsRequest> AppendRequests { get; } = []; // list of append requests
         public System.Collections.Generic.IReadOnlyList<PauseMenuAppendElementsRequest> Appends => AppendRequests;
-
         private List<IUIHookRequest> HookRequests { get; } = []; // list of hook requests
         public System.Collections.Generic.IReadOnlyList<IUIHookRequest> Hooks => HookRequests;
 
@@ -391,6 +399,21 @@ public static class PauseMenuManager
             ReorderRequest = null;
         }
 
+        public bool RequestFieldOverride(FieldOverrideRequest overrideRequest)
+        {
+            if (FieldOverrideRequest != null)
+                // A field override request already exists; cannot add another.
+                return false;
+
+            FieldOverrideRequest = overrideRequest;
+            return true;
+        }
+
+        public void ClearFieldOverrideRequest()
+        {
+            FieldOverrideRequest = null;
+        }
+
         public bool RequestAppend(PauseMenuAppendElementsRequest appendRequest)
         {
             AppendRequests.Add(appendRequest);
@@ -423,8 +446,8 @@ public static class PauseMenuManager
         }
 
         /// <summary>
-        ///     Clears the cached element and all child nodes, as well as any registered modification requests (reorder, append,
-        ///     hook) for this node and its children.
+        ///     Clears the cached element and all child nodes, as well as any registered modification requests (reorder, override,
+        ///     append, hook) for this node and its children.
         /// </summary>
         public void Clear()
         {
@@ -432,6 +455,7 @@ public static class PauseMenuManager
             ChildNodes.Clear();
 
             ClearReorderRequest();
+            ClearFieldOverrideRequest();
             foreach (var appendRequest in AppendRequests.ToList()) ClearAppendRequest(appendRequest);
             foreach (var hookRequest in HookRequests.ToList()) ClearDHookRequest(hookRequest);
 

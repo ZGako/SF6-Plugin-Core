@@ -5,9 +5,24 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 public static class TrainingFunctionHooks
 {
-    // delegate type for all functions are the same signature. Return value signifies whether or not the menu should close after the function is executed.
+    /// <summary>
+    ///     delegate type for all functions are the same signature. Return value signifies whether the menu should close after
+    ///     the function is executed.
+    /// </summary>
+    /// <param name="baseParam">parent param calling the function (presumably)</param>
+    /// <param name="viewData">
+    ///     viewData of the object the function belongs to. can be used to read the value of the slider or
+    ///     similar
+    /// </param>
+    /// \
+    /// <param name="focusIndex">
+    ///     value used for different functions. In the main menu, it appears to be used to indicate which row the element is
+    ///     associated with.
+    ///     In the SpinList submenus, it instead is used per each spinner to indicate which index value it is currently on (so
+    ///     duplicate information with what is present int he viewdata basically)
+    /// </param>
     public delegate bool FunctionDelegate(app.training.BaseParam baseParam,
-        app.training.UIFlowTrainingMenu.Param.ViewData viewData, int rowIndex);
+        app.training.UIFlowTrainingMenu.Param.ViewData viewData, int focusIndex);
 
     // A dictionary mapping our custom FuncType integers to C# lambdas
     private static readonly ConcurrentDictionary<Guid, FunctionDelegate> CustomFunctions = [];
@@ -67,7 +82,7 @@ public static class TrainingFunctionHooks
 
         if (CustomFunctions.TryGetValue(functionId, out var action))
         {
-            var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
+            var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
             var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
 
             if (baseParam == null || viewData == null)
@@ -134,7 +149,7 @@ public static class TrainingFunctionHooks
             {
                 var rowIndex = (int)args[5];
 
-                var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
+                var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
 
                 // Invoke function
@@ -201,7 +216,7 @@ public static class TrainingFunctionHooks
             try
             {
                 var rowIndex = (int)args[5];
-                var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
+                var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
                 s_returnValueForCustomOptionXFunction = action.Invoke(baseParam, viewData, rowIndex);
             }
@@ -258,7 +273,7 @@ public static class TrainingFunctionHooks
             try
             {
                 var rowIndex = (int)args[5];
-                var baseParam = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[3]);
+                var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
                 s_returnValueForCustomOptionYFunction = action.Invoke(baseParam, viewData, rowIndex);
             }

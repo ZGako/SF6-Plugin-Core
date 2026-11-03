@@ -17,21 +17,17 @@ public class UICustomElementRequestNode(Guid functionId, IUICustomTrainingElemen
         ChildDataArrayMo = app.training.TrainingMenuData.REFType.CreateManagedArray((uint)ChildNodes.Count);
         ChildDataArrayMo.Globalize();
 
-        // now we traverse the child nodes recursively and build their data
-        // on the way up we add the hooks and create the childData arrays
+        var childDataArray = ChildDataArrayMo.As<app.training.TrainingMenuData_Array1D>();
         if (ChildNodes.Count > 0)
-        {
-            var childDataArray = ChildDataArrayMo.As<app.training.TrainingMenuData_Array1D>();
-
             for (var i = 0; i < ChildNodes.Count; i++)
             {
                 var childData = ChildNodes[i].Build();
                 childDataArray[i] = childData;
             }
 
-            // assign the childData array to the custom element
-            customElementData.ChildData = childDataArray;
-        }
+        // assign the childData array to the custom element
+        customElementData.ChildData = childDataArray;
+
 
         // add the hooks to the custom element
         foreach (var hook in HookInstructions) hook.AddHook(FunctionId);
