@@ -1,4 +1,5 @@
 // Core usings
+
 using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
@@ -87,7 +88,8 @@ public static class PauseMenuManager
                 {
                     if (childArrayMo != null)
                     {
-                        var cachedChildArrayMo = (currentNode.CachedElement as IObject)?.GetField("_ChildData") as ManagedObject;
+                        var cachedChildArrayMo =
+                            (currentNode.CachedElement as IObject)?.GetField("_ChildData") as ManagedObject;
                         if (cachedChildArrayMo == null || childArrayMo.GetAddress() != cachedChildArrayMo.GetAddress())
                             childArrayMo.ReleaseIfGlobalized();
                     }
@@ -139,10 +141,8 @@ public static class PauseMenuManager
 
                     var currentElement = currentElementMo?.As<app.training.TrainingMenuData>();
 
-                    if (currentNode.FieldOverrideRequest != null && currentElement != null)
-                    {
-                        currentNode.FieldOverrideRequest.ApplyOverrides(currentElement);
-                    }
+                    if (currentNode.FieldOverrideRequest != null && currentElementMo != null)
+                        currentNode.FieldOverrideRequest.ApplyOverrides(currentElementMo);
 
                     if (currentNode.Hooks.Count > 0 && currentElement != null)
                     {
@@ -183,10 +183,12 @@ public static class PauseMenuManager
                         {
                             var originalIndex = currentNode.ReorderRequest?.GetMapping(targetIndex) ?? targetIndex;
                             newArr[newIndex++] = originalChildArray![originalIndex];
-                            foreach (var newElement in allNewElements[originalIndex + 1]) newArr[newIndex++] = newElement;
+                            foreach (var newElement in allNewElements[originalIndex + 1])
+                                newArr[newIndex++] = newElement;
                         }
 
-                        foreach (var newElement in allNewElements[originalChildLength + 1]) newArr[newIndex++] = newElement;
+                        foreach (var newElement in allNewElements[originalChildLength + 1])
+                            newArr[newIndex++] = newElement;
 
                         // Assign back to _UIData._MenuData for RootNode, or _ChildData for regular elements
                         if (currentNode == RootNode)
@@ -257,7 +259,8 @@ public static class PauseMenuManager
         {
             ReorderRequest reorderRequest => currentNode.RequestReorder(reorderRequest),
             PauseMenuAppendElementsRequest appendRequest => currentNode.RequestAppend(appendRequest),
-            FieldOverrideRequest overrideRequest when currentNode != RootNode => currentNode.RequestFieldOverride(overrideRequest),
+            FieldOverrideRequest overrideRequest when currentNode != RootNode => currentNode.RequestFieldOverride(
+                overrideRequest),
             IUIHookRequest hookRequest when currentNode != RootNode => currentNode.RequestHook(hookRequest),
             _ => throw new InvalidOperationException(
                 $"Unknown or invalid modification request type: {modificationRequest.GetType().Name}")
@@ -344,6 +347,7 @@ public static class PauseMenuManager
             FunctionTypeRegistry.Clear();
             TrainingFunctionHooks.Clear();
             SpinBoxHook.Clear();
+            SubMenuSpinnerHook.Clear();
             InputGuideHook.Clear();
         }
     }
@@ -411,6 +415,7 @@ public static class PauseMenuManager
 
         public void ClearFieldOverrideRequest()
         {
+            FieldOverrideRequest?.Reset();
             FieldOverrideRequest = null;
         }
 
