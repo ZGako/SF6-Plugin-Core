@@ -7,12 +7,17 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 public static class SubMenuSpinnerHook
 {
-    public delegate string SubMenuSpinnerFormatDelegate(int value);
+    public delegate (string outputText, bool isNotDefault) SubMenuSpinnerFormatDelegate(int value);
 
     public delegate int SubMenuSpinnerInitDelegate();
 
+    public delegate (int Min, int Max) SubMenuSpinnerLimitDelegate();
+
     private static readonly
-        ConcurrentDictionary<Guid, (SubMenuSpinnerInitDelegate InitDelegate, SubMenuSpinnerFormatDelegate FormatDelegate
+        ConcurrentDictionary<Guid, (
+            SubMenuSpinnerInitDelegate InitDelegate,
+            SubMenuSpinnerFormatDelegate FormatDelegate,
+            SubMenuSpinnerLimitDelegate? LimitDelegate
             )>
         CustomSubMenuSpinners = [];
 
@@ -37,10 +42,11 @@ public static class SubMenuSpinnerHook
     internal static void RegisterCustomSubMenuSpinner(
         Guid id,
         SubMenuSpinnerInitDelegate initDelegate,
-        SubMenuSpinnerFormatDelegate formatDelegate)
+        SubMenuSpinnerFormatDelegate formatDelegate,
+        SubMenuSpinnerLimitDelegate? limitDelegate = null)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomSubMenuSpinners.TryAdd(id, (initDelegate, formatDelegate));
+            CustomSubMenuSpinners.TryAdd(id, (initDelegate, formatDelegate, limitDelegate));
         else
             throw new InvalidOperationException(
                 $"Custom submenu spinner '{id}' is not registered. Call RegisterNewFunctionType first.");
@@ -69,6 +75,7 @@ public static class SubMenuSpinnerHook
     [MethodHook(typeof(app.training.UIFlowTrainingMenu_SpinList.Param), "CreateViewData", MethodHookType.Post)]
     public static void OnCreateViewDataPost(ref ulong retval)
     {
+        if (!s_isInitializing) return;
         try
         {
             // we check the view data in the post, to make sure that our "custom" viewData is present
@@ -121,6 +128,15 @@ public static class SubMenuSpinnerHook
                     !CustomSubMenuSpinners.TryGetValue(functionId, out var callbacks))
                     return PreHookResult.Continue;
 
+                if (callbacks.LimitDelegate != null)
+                {
+                    var (min, max) = callbacks.LimitDelegate.Invoke();
+                    var limit = via.Int2.REFType.CreateValueType().As<via.Int2>();
+                    limit.x = min;
+                    limit.y = max;
+                    data.LimitValue = limit;
+                }
+
                 var maxValues = data.LimitValue.y - data.LimitValue.x + 1;
                 var initValue = callbacks.InitDelegate.Invoke();
                 var mappedInitIndex = Math.Clamp(initValue - data.LimitValue.x, 0, maxValues - 1);
@@ -136,10 +152,21 @@ public static class SubMenuSpinnerHook
                 {
                     var data = viewData.Data;
                     if (!FunctionTypeRegistry.TryGetFunctionId((int)data.FuncType, out var functionId) ||
-                        !CustomSubMenuSpinners.ContainsKey(functionId))
+                        !CustomSubMenuSpinners.TryGetValue(functionId, out var callbacks))
                         return PreHookResult.Continue;
 
-                    args[2] = (ulong)(data.LimitValue.y - data.LimitValue.x + 1);
+                    if (callbacks.LimitDelegate != null)
+                    {
+                        var (min, max) = callbacks.LimitDelegate.Invoke();
+                        var limit = via.Int2.REFType.CreateValueType().As<via.Int2>();
+                        limit.x = min;
+                        limit.y = max;
+                        data.LimitValue = limit;
+                    }
+
+                    var maxValues = data.LimitValue.y - data.LimitValue.x + 1;
+                    viewData.Index = Math.Clamp(viewData.Index, 0, maxValues - 1);
+                    args[2] = (ulong)maxValues;
                     args[3] = (ulong)viewData.Index;
                 }
             }
@@ -147,6 +174,97 @@ public static class SubMenuSpinnerHook
         catch (Exception ex)
         {
             API.LogError($"Exception in SubMenuSpinnerHook.OnInitList: {ex.Message}");
+        }
+
+        return PreHookResult.Continue;
+    }
+
+    [MethodHook(typeof(app.UIPartsSpin), "set_IsDisable", MethodHookType.Pre)]
+    public static PreHookResult OnSetDisablePre(Span<ulong> args)
+    {
+        try
+        {
+            var tm = GameSingletonManager.TrainingManager;
+            if (tm == null) return PreHookResult.Continue;
+
+            var boxedResult = (tm._UITrainingMenu_SpinList as IObject)?.GetField("_IsShowed");
+
+            var boxedResult2 = (tm._UITrainingMenu_SpinList as IObject)?.GetField("_IsShowReq");
+            var isShowed = (boxedResult != null && (bool)boxedResult) || (boxedResult2 != null && (bool)boxedResult2);
+            if (!isShowed) return PreHookResult.Continue;
+
+            var isDisable = args[2] == 1;
+            var parts = ManagedObject.FromAddress(args[1]).As<app.UIPartsSpin>();
+            var selectItem = parts._SelectItem;
+
+            const string customTextureName = "e_tex_sub_custom";
+            via.gui.Texture? customTexture = null;
+            try
+            {
+                customTexture = selectItem.GetGuiChild(customTextureName).As<via.gui.Texture>();
+            }
+            catch (InvalidOperationException e)
+            {
+            }
+
+            if (customTexture == null)
+            {
+                var texture = selectItem.GetGuiChild("e_tex_sub").As<via.gui.Texture>();
+                if (texture == null) return PreHookResult.Continue;
+
+                var duplicatedElement = texture.duplicate(customTextureName);
+                customTexture = ManagedProxy<via.gui.Texture>.Create(duplicatedElement);
+
+                var newColorVt = REFrameworkNET.ValueType.New<via.Color>();
+                newColorVt.rgba = 0xFF720096;
+                customTexture.Color = newColorVt;
+
+                selectItem.addChild(duplicatedElement);
+            }
+
+            customTexture.Visible = isDisable;
+
+            foreach (var (panelName, suffix) in new[]
+                         { ("p_MouseDecideOperable_R", "R"), ("p_MouseDecideOperable_L", "L") })
+            {
+                var customPanelName = $"p_MouseDecideOperable_{suffix}_custom";
+
+                via.gui.Panel? customPanel = null;
+                try
+                {
+                    customPanel = selectItem.GetGuiChild(customPanelName).As<via.gui.Panel>();
+                }
+                catch (InvalidOperationException)
+                {
+                }
+
+                if (customPanel == null)
+                {
+                    var panel = selectItem.GetGuiChild(panelName).As<via.gui.Panel>();
+                    if (panel == null) continue;
+
+                    var duplicatedPanel = panel.duplicate(customPanelName);
+                    customPanel = ManagedProxy<via.gui.Panel>.Create(duplicatedPanel);
+
+                    var arrow = customPanel.GetGuiChild("e_tex_arrow").As<via.gui.Texture>();
+                    if (arrow != null)
+                    {
+                        var newColorVt = REFrameworkNET.ValueType.New<via.Color>();
+                        newColorVt.rgba = 0x1AFFFFFF;
+                        arrow.Color = newColorVt;
+                    }
+
+                    selectItem.addChild(duplicatedPanel);
+                }
+
+                customPanel.Priority = 1;
+
+                customPanel.Visible = isDisable;
+            }
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"Exception in SubMenuSpinnerHook.OnSetDisablePre: {ex.Message}");
         }
 
         return PreHookResult.Continue;
@@ -196,7 +314,14 @@ public static class SubMenuSpinnerHook
             var selectItemText = partsScrollList._List.GetGuiChild("c_selectItem").As<via.gui.SelectItem>();
             var textItem = selectItemText.GetGuiChild("e_txt_0").As<via.gui.Text>();
 
-            var formattedText = callbacks.FormatDelegate.Invoke(actualValue);
+            var (formattedText, isNotDefault) = callbacks.FormatDelegate.Invoke(actualValue);
+
+            if (!data.IsEnabled)
+                formattedText = $"<COLOR 8F82A7>{formattedText}</COLOR>";
+            else
+                formattedText = isNotDefault ? $"<COLOR preset=\"FGM_Accent\">{formattedText}</COLOR>" : formattedText;
+
+
             var str = StringPool.GetOrCreate(formattedText);
 
             (textItem as IObject)?.Call("set_Message", str);

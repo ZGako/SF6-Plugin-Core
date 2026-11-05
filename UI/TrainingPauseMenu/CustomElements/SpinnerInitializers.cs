@@ -4,13 +4,25 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
 public class SubMenuSpinnerInitializer : CustomElementBase
 {
-    public SubMenuSpinnerInitializer(CustomMessage message, CustomMessage guideMessage, (int, int) limitValue)
+    public SubMenuSpinnerInitializer(CustomMessage message, CustomMessage guideMessage, (int, int) limitValue,
+        bool isEnabled = true)
     {
         Type = app.training.ItemType.SPIN;
         MessageID = message;
-        IsEnabled = true;
+        IsEnabled = isEnabled;
         LimitValue = limitValue;
         GuideMessage = guideMessage;
-        EndWordsGuid = new CustomMessage(Guid.Parse("db099697-8e5b-4bac-9d89-4d4b971bb631"));
+    }
+}
+
+public class SpinnerInitializer : CustomElementBase
+{
+    public SpinnerInitializer(CustomMessage message, CustomMessage guideMessage,
+        bool isEnabled = true)
+    {
+        Type = app.training.ItemType.SPIN;
+        MessageID = message;
+        IsEnabled = isEnabled;
+        GuideMessage = guideMessage;
     }
 }

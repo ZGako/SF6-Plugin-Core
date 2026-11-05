@@ -1,20 +1,22 @@
 using SF6_Plugin_Core.UI.Localization;
+
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
 public class RowButtonInitializer : CustomElementBase
 {
-    public RowButtonInitializer(CustomMessage message, CustomMessage guideMessage)
+    public RowButtonInitializer(CustomMessage message, CustomMessage guideMessage,
+        bool isEnabled = true)
     {
         Type = app.training.ItemType.TEXT_ONLY;
         MessageID = message;
         GuideMessage = guideMessage;
-        IsEnabled = true;
+        IsEnabled = isEnabled;
     }
 }
 
-public class SpinnerOptionTextInitializer : CustomElementBase
+public class SpinnerItemTextInitializer : CustomElementBase
 {
-    public SpinnerOptionTextInitializer(CustomMessage message)
+    public SpinnerItemTextInitializer(CustomMessage message)
     {
         Type = app.training.ItemType.TEXT_ONLY;
         MessageID = message;
