@@ -26,6 +26,11 @@ public static class CoreLifecycle
 
         OnCoreUnloading = null;
 
+        // clear training pause menu and options settings before clearing singletons/messages
+        // so any remaining registered modifications can be cleanly restored first
+        PauseMenuManager.ClearTrainingPauseMenuHooks();
+        OptionsSettingsManager.ClearOptionsSettingsHooks();
+
         // clear services
         GameSingletonManager.Clear();
         BFlowHooks.ClearAllRegisteredFlowTransitions();
@@ -36,11 +41,5 @@ public static class CoreLifecycle
 
         // clear localization
         MessageRegistry.Clear();
-
-        // clear training pause menu
-        PauseMenuManager.ClearTrainingPauseMenuHooks();
-
-        // clear options settings hook
-        OptionsSettingsManager.ClearOptionsSettingsHooks();
     }
 }

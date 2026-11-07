@@ -1,6 +1,7 @@
 ﻿using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.Services;
 using SF6_Plugin_Core.UI.InjectionShared;
+using SF6_Plugin_Core.UI.OptionsSettings.Hooks;
 using SF6_Plugin_Core.UI.OptionsSettings.Requests;
 
 namespace SF6_Plugin_Core.UI.OptionsSettings.Core;
@@ -465,6 +466,8 @@ public static class OptionsSettingsManager
             ModificationRequestPaths.Clear();
             RootNode.Clear();
             OptionTypeRegistry.Clear();
+            DisableReasonHooks.Clear();
+            ValueTypeHooks.Clear();
         }
     }
 

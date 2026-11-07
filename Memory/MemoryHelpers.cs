@@ -87,7 +87,10 @@ public static class MemoryHelpers
                 else
                 {
                     var value = field.GetDataBoxed(sourceAddr, false);
-                    field.SetDataBoxed(targetAddr, value, false);
+                    if (value == null)
+                        Marshal.WriteIntPtr((IntPtr)(targetAddr + field.OffsetFromBase), IntPtr.Zero);
+                    else
+                        field.SetDataBoxed(targetAddr, value, false);
                 }
             }
             catch (Exception ex)

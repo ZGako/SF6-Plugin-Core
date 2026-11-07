@@ -24,7 +24,7 @@ public abstract class CustomOptionBase : IUICustomOptionsElementInitialization
     protected app.Option.ValueType ValueType { get; init; } = app.Option.ValueType.Invalid;
     protected app.Option.GroupType GroupType { get; init; } = app.Option.GroupType.Invalid;
     protected app.Option.DecideEventType DecideEventType { get; init; } = app.Option.DecideEventType.Invalid;
-    
+
 
     protected app.Option.ExtraButtonEventType ExtraButtonEventType { get; init; } =
         app.Option.ExtraButtonEventType.Invalid;
@@ -39,7 +39,6 @@ public abstract class CustomOptionBase : IUICustomOptionsElementInitialization
         TitleMessage?.Dispose();
 
         foreach (var message in ValueMessageList) message.Dispose();
-        ValueMessageList.Clear();
 
         _customOptionDataMo?.ReleaseIfGlobalized();
         _customOptionDataMo = null;
@@ -79,9 +78,10 @@ public abstract class CustomOptionBase : IUICustomOptionsElementInitialization
         if (DescriptionMessage != null) _settingsUnitMo.SetGuidField("DescriptionMessage", DescriptionMessage.Id);
 
         // TODO: the value message lists
+        settingsUnit.ValueMessageList.Clear();
         foreach (var message in ValueMessageList)
         {
-            _System.Guid newEngineGuid = _System.Guid.Parse(message.Id.ToString());
+            var newEngineGuid = _System.Guid.Parse(message.Id.ToString());
             settingsUnit.ValueMessageList.Add(newEngineGuid);
         }
 

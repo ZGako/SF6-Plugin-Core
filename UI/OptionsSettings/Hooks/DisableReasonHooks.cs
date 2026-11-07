@@ -24,6 +24,11 @@ public class DisableReasonHooks
         CustomDisableConditions.TryRemove(id, out var _);
     }
 
+    internal static void Clear()
+    {
+        CustomDisableConditions.Clear();
+    }
+
     [MethodHook(typeof(app.Option),
         "GetDisableReasonType(app.Option.OptionUnitBase, app.Option.SupportModeType, System.Int32)",
         MethodHookType.Pre)]
