@@ -60,8 +60,20 @@ public static class CustomInputGuideHook
                             throw new NullReferenceException(
                                 "Could not get field _ParamData of UITrainingMenu");
 
-            var functype = paramData.CurrentData?.FuncType
-                           ?? paramData.ViewDataList[paramData.SecondaryListIndex].Data.FuncType;
+            app.training.TrainingFuncType functype;
+
+
+            if (paramData.CurrentData == null)
+            {
+                if (paramData.ViewDataList[paramData.SecondaryListIndex]?.Data?.FuncType is { } value)
+                    functype = value; // value is automatically unwrapped and non-nullable here
+                else
+                    return;
+            }
+            else
+            {
+                functype = paramData.CurrentData.FuncType;
+            }
 
             if (!FunctionTypeRegistry.TryGetFunctionId((int)functype, out var functionId) ||
                 !CustomSecondaryListEntries.TryGetValue(functionId, out var entry))
