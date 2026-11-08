@@ -11,14 +11,22 @@ namespace SF6_Plugin_Core.UI.OptionsSettings.Core;
 /// </summary>
 public static class OptionsSettingsManager
 {
-    private static readonly ConcurrentDictionary<IUIModificationRequest, List<int>>
+    private static readonly Dictionary<IUIModificationRequest, List<int>>
         ModificationRequestPaths = [];
 
     private static readonly UICachedDataNode RootNode = new(null);
     private static readonly Lock ModificationLock = new();
+    private static volatile bool _isDirty;
 
     // Tracks custom tabs added at the root level so they can be cleanly removed and reset on rebuild
     private static readonly List<(app.Option.TabType TabKey, ManagedObject ListMo)> AddedTabs = [];
+
+    private static REFrameworkNET.Collections.IDictionary<app.Option.TabType,
+        REFrameworkNET.Collections.IList<app.Option.OptionUnitBase>>? TryGetUnitLists()
+    {
+        var optionManager = GameSingletonManager.OptionManager ?? API.GetManagedSingletonT<app.OptionManager>();
+        return optionManager?.UnitLists;
+    }
 
     private static REFrameworkNET.Collections.IDictionary<app.Option.TabType,
         REFrameworkNET.Collections.IList<app.Option.OptionUnitBase>> GetUnitLists()
@@ -132,11 +140,41 @@ public static class OptionsSettingsManager
         }
     }
 
+    [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
+    public static void OnLateUpdateBehavior()
+    {
+        if (!_isDirty) return;
+
+        lock (ModificationLock)
+        {
+            if (!_isDirty) return;
+            _isDirty = false;
+
+            if (TryGetUnitLists() != null)
+            {
+                RebuildUI();
+            }
+            else
+            {
+                foreach (var (_, listMo) in AddedTabs) listMo.ReleaseIfGlobalized();
+                AddedTabs.Clear();
+
+                foreach (var request in ModificationRequestPaths.Keys)
+                    if (request is ExclusiveModificationRequest singleUseRequest)
+                        singleUseRequest.ReleaseClaim();
+
+                ModificationRequestPaths.Clear();
+                RootNode.Clear();
+                OptionTypeRegistry.Clear();
+            }
+        }
+    }
+
     private static void RebuildUI()
     {
         if (!ModificationLock.IsHeldByCurrentThread)
             throw new SynchronizationLockException(
-                "RebuildUI must be called within a ModifyUI call.");
+                "RebuildUI must be called while holding ModificationLock.");
 
         OptionTypeRegistry.Clear();
 
@@ -290,17 +328,18 @@ public static class OptionsSettingsManager
     /// TODO: make this public again once the tab stuff is possible (if ever)
     internal static void RegisterModification(AppendNewTabRequest newTabRequest)
     {
-        if (!ModificationLock.IsHeldByCurrentThread)
-            throw new InvalidOperationException("RegisterModification must be called inside a ModifyUI call.");
-
-        if (RootNode.RequestNewTab(newTabRequest))
+        lock (ModificationLock)
         {
-            ModificationRequestPaths[newTabRequest] = [];
-            newTabRequest.Claim();
-        }
-        else
-        {
-            API.LogWarning("Failed to register AppendNewTabRequest.");
+            if (RootNode.RequestNewTab(newTabRequest))
+            {
+                ModificationRequestPaths[newTabRequest] = [];
+                newTabRequest.Claim();
+                _isDirty = true;
+            }
+            else
+            {
+                API.LogWarning("Failed to register AppendNewTabRequest.");
+            }
         }
     }
 
@@ -310,9 +349,6 @@ public static class OptionsSettingsManager
     /// </summary>
     public static void RegisterModification(List<int> traversalPath, IUIModificationRequest modificationRequest)
     {
-        if (!ModificationLock.IsHeldByCurrentThread)
-            throw new InvalidOperationException("RegisterModification must be called inside a ModifyUI call.");
-
         if (modificationRequest is AppendNewTabRequest)
             throw new InvalidOperationException(
                 $"'{nameof(AppendNewTabRequest)}' does not take a traversal path. Use RegisterModification({nameof(AppendNewTabRequest)}) instead.");
@@ -322,85 +358,96 @@ public static class OptionsSettingsManager
                 $"Traversal path cannot be empty. Only '{nameof(AppendNewTabRequest)}' operates at the root level via RegisterModification({nameof(AppendNewTabRequest)}).",
                 nameof(traversalPath));
 
-        var currentNode = RootNode;
-        var unitLists = GetUnitLists();
-        REFrameworkNET.Collections.IList<app.Option.OptionUnitBase>? targetList = null;
-
-        for (var i = 0; i < traversalPath.Count; i++)
+        lock (ModificationLock)
         {
-            var index = traversalPath[i];
+            var currentNode = RootNode;
+            var unitLists = GetUnitLists();
+            REFrameworkNET.Collections.IList<app.Option.OptionUnitBase>? targetList = null;
 
-            if (i == 0)
+            for (var i = 0; i < traversalPath.Count; i++)
             {
-                var tabType = (app.Option.TabType)index;
-                if (!unitLists.ContainsKey(tabType))
-                    throw new InvalidOperationException($"TabType {tabType} ({index}) does not exist in UnitLists.");
+                var index = traversalPath[i];
 
-                targetList = unitLists[tabType];
-                var tabNode = currentNode[index];
-                if (tabNode == null)
+                if (i == 0)
                 {
-                    tabNode = new UICachedDataNode(null);
-                    currentNode[index] = tabNode;
-                }
+                    var tabType = (app.Option.TabType)index;
+                    if (!unitLists.ContainsKey(tabType))
+                        throw new InvalidOperationException(
+                            $"TabType {tabType} ({index}) does not exist in UnitLists.");
 
-                currentNode = tabNode;
+                    targetList = unitLists[tabType];
+                    var tabNode = currentNode[index];
+                    if (tabNode == null)
+                    {
+                        tabNode = new UICachedDataNode(null);
+                        currentNode[index] = tabNode;
+                    }
+
+                    currentNode = tabNode;
+                }
+                else
+                {
+                    if (targetList == null)
+                        throw new InvalidOperationException("Target list is null during path traversal.");
+
+                    var unit = GetUnitFromNodeOrList(currentNode, targetList, index);
+                    var groupUnit = AsGroupUnit(unit, index);
+                    targetList = groupUnit.ChildUnits;
+
+                    var childNode = currentNode[index];
+                    if (childNode == null)
+                    {
+                        childNode = new UICachedDataNode(null);
+                        currentNode[index] = childNode;
+                    }
+
+                    currentNode = childNode;
+                }
+            }
+
+            if (currentNode.CachedElement == null)
+            {
+                if (targetList == null)
+                    throw new InvalidOperationException("Target list resolved to null.");
+
+                currentNode.CachedElement = CreateCachedUnitArray(targetList);
+            }
+
+            var success = modificationRequest switch
+            {
+                OptionsAppendElementsRequest appendRequest => currentNode.RequestAppend(appendRequest),
+                ReorderRequest reorderRequest => currentNode.RequestReorder(reorderRequest),
+                RemoveElementsRequest removeRequest => currentNode.RequestRemove(removeRequest),
+                _ => throw new InvalidOperationException(
+                    $"Unknown or incompatible modification request type '{modificationRequest.GetType().Name}' at path [{string.Join(", ", traversalPath)}].")
+            };
+
+            if (success)
+            {
+                ModificationRequestPaths[modificationRequest] = [.. traversalPath];
+                if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.Claim();
+                _isDirty = true;
             }
             else
             {
-                if (targetList == null)
-                    throw new InvalidOperationException("Target list is null during path traversal.");
-
-                var unit = GetUnitFromNodeOrList(currentNode, targetList, index);
-                var groupUnit = AsGroupUnit(unit, index);
-                targetList = groupUnit.ChildUnits;
-
-                var childNode = currentNode[index];
-                if (childNode == null)
-                {
-                    childNode = new UICachedDataNode(null);
-                    currentNode[index] = childNode;
-                }
-
-                currentNode = childNode;
+                API.LogWarning(
+                    $"Modification request of type {modificationRequest.GetType().Name} conflicts with an existing request at path [{string.Join(", ", traversalPath)}].");
             }
-        }
-
-        if (currentNode.CachedElement == null)
-        {
-            if (targetList == null)
-                throw new InvalidOperationException("Target list resolved to null.");
-
-            currentNode.CachedElement = CreateCachedUnitArray(targetList);
-        }
-
-        var success = modificationRequest switch
-        {
-            OptionsAppendElementsRequest appendRequest => currentNode.RequestAppend(appendRequest),
-            ReorderRequest reorderRequest => currentNode.RequestReorder(reorderRequest),
-            RemoveElementsRequest removeRequest => currentNode.RequestRemove(removeRequest),
-            _ => throw new InvalidOperationException(
-                $"Unknown or incompatible modification request type '{modificationRequest.GetType().Name}' at path [{string.Join(", ", traversalPath)}].")
-        };
-
-        if (success)
-        {
-            ModificationRequestPaths[modificationRequest] = [.. traversalPath];
-            if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.Claim();
-        }
-        else
-        {
-            API.LogWarning(
-                $"Modification request of type {modificationRequest.GetType().Name} conflicts with an existing request at path [{string.Join(", ", traversalPath)}].");
         }
     }
 
     public static void UnregisterModification(IUIModificationRequest modificationRequest)
     {
-        if (!ModificationLock.IsHeldByCurrentThread)
-            throw new InvalidOperationException("UnregisterModification must be called inside a ModifyUI call.");
+        lock (ModificationLock)
+        {
+            if (UnregisterModificationCore(modificationRequest))
+                _isDirty = true;
+        }
+    }
 
-        if (!ModificationRequestPaths.TryRemove(modificationRequest, out var traversalPath)) return;
+    private static bool UnregisterModificationCore(IUIModificationRequest modificationRequest)
+    {
+        if (!ModificationRequestPaths.Remove(modificationRequest, out var traversalPath)) return false;
         if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.ReleaseClaim();
 
         var currentNode = RootNode;
@@ -410,7 +457,7 @@ public static class OptionsSettingsManager
             if (currentNode[index] == null)
             {
                 API.LogWarning($"Cached node at index {index} is null. Cannot traverse further.");
-                return;
+                return true;
             }
 
             currentNode = currentNode[index]!;
@@ -434,24 +481,25 @@ public static class OptionsSettingsManager
                 throw new InvalidOperationException(
                     $"Unknown modification request type: {modificationRequest.GetType().Name}");
         }
-    }
 
-    public static void ModifyUI(Action modificationAction)
-    {
-        lock (ModificationLock)
-        {
-            modificationAction.Invoke();
-            RebuildUI();
-        }
+        return true;
     }
 
     internal static void ClearOptionsSettingsHooks()
     {
         lock (ModificationLock)
         {
-            if (GameSingletonManager.OptionManager != null)
+            foreach (var request in ModificationRequestPaths.Keys.ToList())
+                if (UnregisterModificationCore(request))
+                    _isDirty = true;
+
+            var unitLists = TryGetUnitLists();
+            if (unitLists != null)
             {
-                RemoveAddedTabs(GetUnitLists());
+                if (_isDirty || AddedTabs.Count > 0 || RootNode.Children.Count > 0)
+                    RebuildUI();
+                else
+                    RemoveAddedTabs(unitLists);
             }
             else
             {
@@ -459,10 +507,7 @@ public static class OptionsSettingsManager
                 AddedTabs.Clear();
             }
 
-            foreach (var request in ModificationRequestPaths.Keys)
-                if (request is ExclusiveModificationRequest singleUseRequest)
-                    singleUseRequest.ReleaseClaim();
-
+            _isDirty = false;
             ModificationRequestPaths.Clear();
             RootNode.Clear();
             OptionTypeRegistry.Clear();

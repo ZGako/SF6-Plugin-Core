@@ -52,7 +52,6 @@ public class CustomMessage : IDisposable
     {
         if (_isGameMessage) return;
         MessageRegistry.UnregisterCustomMessage(Id);
-        GC.SuppressFinalize(this);
     }
 
     /// <summary>

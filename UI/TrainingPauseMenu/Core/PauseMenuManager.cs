@@ -1,6 +1,7 @@
 // Core usings
 
 using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.Services;
 using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
@@ -12,11 +13,21 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 /// </summary>
 public static class PauseMenuManager
 {
-    private static readonly ConcurrentDictionary<IUIModificationRequest, List<int>>
+    private static readonly Dictionary<IUIModificationRequest, List<int>>
         ModificationRequestPaths = []; // maps modification requests to their traversal paths in the cached data tree
 
     private static readonly UICachedDataNode RootNode = new(null); // root node of the cached data tree
     private static readonly Lock ModificationLock = new();
+    private static volatile bool _isDirty;
+
+    private static ManagedObject? TryGetUIDataMo()
+    {
+        if (GameSingletonManager.TrainingManager == null) return null;
+
+        var trainingManagerMo = API.GetManagedSingleton("app.training.TrainingManager");
+        var uiDataMo = (trainingManagerMo as IObject)?.GetField("_UIData") as ManagedObject;
+        return (uiDataMo as IObject)?.GetField("_MenuData") as ManagedObject;
+    }
 
     private static ManagedObject? GetUIDataMo()
     {
@@ -40,11 +51,38 @@ public static class PauseMenuManager
         menuDataField.SetDataBoxed(uiDataMo.GetAddress(), menuDataArrayMo, false);
     }
 
+    [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
+    public static void OnLateUpdateBehavior()
+    {
+        if (!_isDirty) return;
+
+        lock (ModificationLock)
+        {
+            if (!_isDirty) return;
+            _isDirty = false;
+
+            if (TryGetUIDataMo() != null)
+            {
+                RebuildUI();
+            }
+            else
+            {
+                foreach (var request in ModificationRequestPaths.Keys)
+                    if (request is ExclusiveModificationRequest singleUseRequest)
+                        singleUseRequest.ReleaseClaim();
+
+                ModificationRequestPaths.Clear();
+                RootNode.Clear();
+                FunctionTypeRegistry.Clear();
+            }
+        }
+    }
+
     private static void RebuildUI()
     {
         if (!ModificationLock.IsHeldByCurrentThread)
             throw new SynchronizationLockException(
-                "RebuildUI must be called within a modification batch (between BeginModificationBatch and EndModificationBatch).");
+                "RebuildUI must be called while holding ModificationLock.");
 
         // Clear the function type registry (the functionTypes we want them to be incremental values, so we clear them to refill them properly)
         // Messages are instead cleared by the ModificationRequests themselves, since they don't need to be refilled from scratch and thus rebuild each time the UI is rebuilt
@@ -203,87 +241,95 @@ public static class PauseMenuManager
 
     public static void RegisterModification(List<int> traversalPath, IUIModificationRequest modificationRequest)
     {
-        if (!ModificationLock.IsHeldByCurrentThread)
-            throw new InvalidOperationException("RegisterModification must be called inside a ModifyUI call.");
-
-        var currentNode = RootNode;
-        // If RootNode was already modified, start traversal from the cached original _MenuData array
-        var gameUIDataMo = RootNode.CachedElement ?? GetUIDataMo();
-        ManagedObject? targetElementMo = null;
-
-        // Traverse down to the target node (runs 0 times if traversalPath is empty)
-        foreach (var index in traversalPath)
+        lock (ModificationLock)
         {
-            var gameUIDataArray = gameUIDataMo?.As<_System.Array>()
-                                  ?? throw new InvalidCastException("UIData is not a valid array. Cannot traverse.");
+            var currentNode = RootNode;
+            // If RootNode was already modified, start traversal from the cached original _MenuData array
+            var gameUIDataMo = RootNode.CachedElement ?? GetUIDataMo();
+            ManagedObject? targetElementMo = null;
 
-            var childNode = currentNode[index];
-            if (childNode == null)
+            // Traverse down to the target node (runs 0 times if traversalPath is empty)
+            foreach (var index in traversalPath)
             {
-                childNode = new UICachedDataNode(null);
-                currentNode[index] = childNode;
+                var gameUIDataArray = gameUIDataMo?.As<_System.Array>()
+                                      ?? throw new InvalidCastException(
+                                          "UIData is not a valid array. Cannot traverse.");
+
+                var childNode = currentNode[index];
+                if (childNode == null)
+                {
+                    childNode = new UICachedDataNode(null);
+                    currentNode[index] = childNode;
+                }
+
+                targetElementMo = childNode.CachedElement
+                                  ?? gameUIDataArray.GetValue(index) as ManagedObject
+                                  ?? throw new InvalidOperationException(
+                                      $"Element at index {index} is null or not a ManagedObject. Cannot copy fields.");
+
+                gameUIDataMo = (targetElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
+                currentNode = childNode;
             }
 
-            targetElementMo = childNode.CachedElement
-                              ?? gameUIDataArray.GetValue(index) as ManagedObject
-                              ?? throw new InvalidOperationException(
-                                  $"Element at index {index} is null or not a ManagedObject. Cannot copy fields.");
-
-            gameUIDataMo = (targetElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
-            currentNode = childNode;
-        }
-
-        // Cache the original data on the target node if not cached yet
-        if (currentNode.CachedElement == null)
-        {
-            if (currentNode == RootNode)
+            // Cache the original data on the target node if not cached yet
+            if (currentNode.CachedElement == null)
             {
-                // For RootNode, cache the original _MenuData array itself
-                var originalMenuDataMo = GetUIDataMo()
-                                         ?? throw new InvalidOperationException("_MenuData is null.");
-                originalMenuDataMo.Globalize();
-                RootNode.CachedElement = originalMenuDataMo;
+                if (currentNode == RootNode)
+                {
+                    // For RootNode, cache the original _MenuData array itself
+                    var originalMenuDataMo = GetUIDataMo()
+                                             ?? throw new InvalidOperationException("_MenuData is null.");
+                    originalMenuDataMo.Globalize();
+                    RootNode.CachedElement = originalMenuDataMo;
+                }
+                else
+                {
+                    var typeDef = app.training.TrainingMenuData.REFType;
+                    var elementCopyMo = typeDef.CreateInstance(0);
+                    elementCopyMo.Globalize();
+                    elementCopyMo.CopyFieldsFrom(targetElementMo!, typeDef);
+                    currentNode.CachedElement = elementCopyMo;
+                }
+            }
+
+            // Register the request on currentNode (which is RootNode when traversalPath is empty)
+            var success = modificationRequest switch
+            {
+                ReorderRequest reorderRequest => currentNode.RequestReorder(reorderRequest),
+                PauseMenuAppendElementsRequest appendRequest => currentNode.RequestAppend(appendRequest),
+                FieldOverrideRequest overrideRequest when currentNode != RootNode => currentNode.RequestFieldOverride(
+                    overrideRequest),
+                IUIHookRequest hookRequest when currentNode != RootNode => currentNode.RequestHook(hookRequest),
+                _ => throw new InvalidOperationException(
+                    $"Unknown or invalid modification request type: {modificationRequest.GetType().Name}")
+            };
+
+            if (success)
+            {
+                ModificationRequestPaths[modificationRequest] = [.. traversalPath];
+                if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.Claim();
+                _isDirty = true;
             }
             else
             {
-                var typeDef = app.training.TrainingMenuData.REFType;
-                var elementCopyMo = typeDef.CreateInstance(0);
-                elementCopyMo.Globalize();
-                elementCopyMo.CopyFieldsFrom(targetElementMo!, typeDef);
-                currentNode.CachedElement = elementCopyMo;
+                API.LogWarning(
+                    $"Modification request of type {modificationRequest.GetType().Name} is already registered at this path. Cannot register again.");
             }
-        }
-
-        // Register the request on currentNode (which is RootNode when traversalPath is empty)
-        var success = modificationRequest switch
-        {
-            ReorderRequest reorderRequest => currentNode.RequestReorder(reorderRequest),
-            PauseMenuAppendElementsRequest appendRequest => currentNode.RequestAppend(appendRequest),
-            FieldOverrideRequest overrideRequest when currentNode != RootNode => currentNode.RequestFieldOverride(
-                overrideRequest),
-            IUIHookRequest hookRequest when currentNode != RootNode => currentNode.RequestHook(hookRequest),
-            _ => throw new InvalidOperationException(
-                $"Unknown or invalid modification request type: {modificationRequest.GetType().Name}")
-        };
-
-        if (success)
-        {
-            ModificationRequestPaths[modificationRequest] = traversalPath;
-            if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.Claim();
-        }
-        else
-        {
-            API.LogWarning(
-                $"Modification request of type {modificationRequest.GetType().Name} is already registered at this path. Cannot register again.");
         }
     }
 
     public static void UnregisterModification(IUIModificationRequest modificationRequest)
     {
-        if (!ModificationLock.IsHeldByCurrentThread)
-            throw new InvalidOperationException("UnregisterModification must be called inside a ModifyUI call.");
+        lock (ModificationLock)
+        {
+            if (UnregisterModificationCore(modificationRequest))
+                _isDirty = true;
+        }
+    }
 
-        if (!ModificationRequestPaths.TryRemove(modificationRequest, out var traversalPath)) return;
+    private static bool UnregisterModificationCore(IUIModificationRequest modificationRequest)
+    {
+        if (!ModificationRequestPaths.Remove(modificationRequest, out var traversalPath)) return false;
 
         if (modificationRequest is ExclusiveModificationRequest singleUseRequest) singleUseRequest.ReleaseClaim();
 
@@ -294,7 +340,7 @@ public static class PauseMenuManager
             if (currentNode[index] == null)
             {
                 API.LogWarning($"Cached node at index {index} is null. Cannot traverse further.");
-                return;
+                return true;
             }
 
             currentNode = currentNode[index]!;
@@ -318,15 +364,8 @@ public static class PauseMenuManager
                 throw new InvalidOperationException(
                     $"Unknown modification request type: {modificationRequest.GetType().Name}");
         }
-    }
 
-    public static void ModifyUI(Action modificationAction)
-    {
-        lock (ModificationLock)
-        {
-            modificationAction.Invoke();
-            RebuildUI();
-        }
+        return true;
     }
 
     /// <summary>
@@ -336,10 +375,14 @@ public static class PauseMenuManager
     {
         lock (ModificationLock)
         {
-            foreach (var request in ModificationRequestPaths.Keys)
-                if (request is ExclusiveModificationRequest singleUseRequest)
-                    singleUseRequest.ReleaseClaim();
+            foreach (var request in ModificationRequestPaths.Keys.ToList())
+                if (UnregisterModificationCore(request))
+                    _isDirty = true;
 
+            if ((_isDirty || RootNode.CachedElement != null || RootNode.Children.Count > 0) && TryGetUIDataMo() != null)
+                RebuildUI();
+
+            _isDirty = false;
             ModificationRequestPaths.Clear();
             RootNode.Clear();
 
