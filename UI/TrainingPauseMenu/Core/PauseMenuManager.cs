@@ -392,6 +392,7 @@ public static class PauseMenuManager
             SpinBoxHook.Clear();
             SubMenuSpinnerHook.Clear();
             InputGuideHook.Clear();
+            CustomInputGuideHook.Clear();
         }
     }
 
