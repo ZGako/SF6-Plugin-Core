@@ -7,6 +7,8 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
 public static class SubMenuSpinnerHook
 {
+    public delegate bool MaskThisItemRowDelegate();
+
     public delegate (string outputText, bool isNotDefault) SubMenuSpinnerFormatDelegate(int value);
 
     public delegate int SubMenuSpinnerInitDelegate();
@@ -17,7 +19,8 @@ public static class SubMenuSpinnerHook
         ConcurrentDictionary<Guid, (
             SubMenuSpinnerInitDelegate InitDelegate,
             SubMenuSpinnerFormatDelegate FormatDelegate,
-            SubMenuSpinnerLimitDelegate? LimitDelegate
+            SubMenuSpinnerLimitDelegate? LimitDelegate,
+            MaskThisItemRowDelegate? MaskThisItemRow
             )>
         CustomSubMenuSpinners = [];
 
@@ -43,10 +46,11 @@ public static class SubMenuSpinnerHook
         Guid id,
         SubMenuSpinnerInitDelegate initDelegate,
         SubMenuSpinnerFormatDelegate formatDelegate,
-        SubMenuSpinnerLimitDelegate? limitDelegate = null)
+        SubMenuSpinnerLimitDelegate? limitDelegate = null,
+        MaskThisItemRowDelegate? maskThisItemRow = null)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomSubMenuSpinners.TryAdd(id, (initDelegate, formatDelegate, limitDelegate));
+            CustomSubMenuSpinners.TryAdd(id, (initDelegate, formatDelegate, limitDelegate, maskThisItemRow));
         else
             throw new InvalidOperationException(
                 $"Custom submenu spinner '{id}' is not registered. Call RegisterNewFunctionType first.");
@@ -96,6 +100,17 @@ public static class SubMenuSpinnerHook
             for (var i = 0; i < paramData.ViewDataList.Count; i++)
             {
                 var viewData = paramData.ViewDataList[i];
+                var data = viewData.Data;
+
+                if (FunctionTypeRegistry.TryGetFunctionId((int)data.FuncType, out var functionId) &&
+                    CustomSubMenuSpinners.TryGetValue(functionId, out var callbacks) &&
+                    callbacks.MaskThisItemRow?.Invoke() == true)
+                {
+                    paramData.ViewDataList.RemoveAt(i);
+                    i--;
+                    continue;
+                }
+
                 // add all viewDataList elements, we'll let the InitList function deal with them
                 PerThreadViewData.Value?.Enqueue(viewData);
             }

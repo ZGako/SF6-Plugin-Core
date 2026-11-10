@@ -76,8 +76,6 @@ public static class TrainingFunctionHooks
         // FuncType argument
         var funcType = (int)args[2];
 
-        if (funcType <= FunctionTypeRegistry.TrainingFuncTypeMax) return PreHookResult.Continue;
-
         if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId)) return PreHookResult.Continue;
 
         if (CustomFunctions.TryGetValue(functionId, out var action))

@@ -6,7 +6,8 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 public class SubMenuSpinnerHookRequest(
     SubMenuSpinnerHook.SubMenuSpinnerInitDelegate initDelegate,
     SubMenuSpinnerHook.SubMenuSpinnerFormatDelegate formatDelegate,
-    SubMenuSpinnerHook.SubMenuSpinnerLimitDelegate? limitDelegate = null)
+    SubMenuSpinnerHook.SubMenuSpinnerLimitDelegate? limitDelegate = null,
+    SubMenuSpinnerHook.MaskThisItemRowDelegate? maskThisItemRow = null)
     : ExclusiveModificationRequest, IUIHookRequest
 {
     private Guid _functionId;
@@ -14,7 +15,8 @@ public class SubMenuSpinnerHookRequest(
     public void AddHook(Guid functionId)
     {
         _functionId = functionId;
-        SubMenuSpinnerHook.RegisterCustomSubMenuSpinner(functionId, initDelegate, formatDelegate, limitDelegate);
+        SubMenuSpinnerHook.RegisterCustomSubMenuSpinner(functionId, initDelegate, formatDelegate, limitDelegate,
+            maskThisItemRow);
     }
 
     public void ClearHook()
@@ -24,6 +26,6 @@ public class SubMenuSpinnerHookRequest(
 
     public override SubMenuSpinnerHookRequest Clone()
     {
-        return new SubMenuSpinnerHookRequest(initDelegate, formatDelegate, limitDelegate);
+        return new SubMenuSpinnerHookRequest(initDelegate, formatDelegate, limitDelegate, maskThisItemRow);
     }
 }

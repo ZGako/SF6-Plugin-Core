@@ -2,6 +2,7 @@
 
 using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.Services;
+using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.Helpers;
 
@@ -48,25 +49,38 @@ public static class UIHelpers
     }
 
     /// <summary>
-    /// O(n) lookup of the UIAgent associated with the GameObject whose name is the input parameter.
+    ///     O(n) lookup of the UIAgent associated with the GameObject whose name is the input parameter.
     /// </summary>
     /// <remarks>
-    /// Make sure to store the UIAgent to avoid recalling this function.</remarks>
+    ///     Make sure to store the UIAgent to avoid recalling this function.
+    /// </remarks>
     /// <param name="gameObjectName"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
     public static app.UIAgent GetUIAgent(string gameObjectName)
     {
-        var uiAgents = GameSingletonManager.UIAgentManager?._Entries 
-                          ?? throw new InvalidOperationException("Call this method only if you can guarantee the UIAgentManger exists");
+        var uiAgents = GameSingletonManager.UIAgentManager?._Entries
+                       ?? throw new InvalidOperationException(
+                           "Call this method only if you can guarantee the UIAgentManger exists");
 
         // cannot use foreach it seems
         for (var i = 0; i < uiAgents.Count; i++)
         {
             var agent = uiAgents[i].Agent;
-            if (agent.GameObject.Name ==  gameObjectName)
+            if (agent.GameObject.Name == gameObjectName)
                 return agent;
         }
+
         throw new InvalidOperationException($"{gameObjectName} not found in UI Agent Manager");
+    }
+
+    public static bool TryGetFunctionId(int funcType, out Guid id)
+    {
+        return FunctionTypeRegistry.TryGetFunctionId(funcType, out id);
+    }
+
+    public static bool TryGetFunctionType(Guid id, out int funcType)
+    {
+        return FunctionTypeRegistry.TryGetFunctionType(id, out funcType);
     }
 }

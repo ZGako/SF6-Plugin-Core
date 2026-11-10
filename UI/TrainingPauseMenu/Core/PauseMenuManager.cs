@@ -20,6 +20,8 @@ public static class PauseMenuManager
     private static readonly Lock ModificationLock = new();
     private static volatile bool _isDirty;
 
+    private static readonly ConcurrentBag<Func<bool>> TrainingModeRefreshRequestBag = [];
+
     private static ManagedObject? TryGetUIDataMo()
     {
         if (GameSingletonManager.TrainingManager == null) return null;
@@ -49,6 +51,18 @@ public static class PauseMenuManager
         var menuDataField = uiDataMo.GetTypeDefinition()!.GetField("_MenuData")
                             ?? throw new InvalidOperationException("_MenuData field not found on _UIData.");
         menuDataField.SetDataBoxed(uiDataMo.GetAddress(), menuDataArrayMo, false);
+    }
+
+    public static void RequestTrainingModeRefreshOnMenuExit(Func<bool> func)
+    {
+        TrainingModeRefreshRequestBag.Add(func);
+    }
+
+    [MethodHook(typeof(app.training.UITrainingMenu), "MainMenuCancel", MethodHookType.Post)]
+    public static void OnMainMenuCancel(ref ulong _)
+    {
+        if (TrainingModeRefreshRequestBag.Any(func => func.Invoke()))
+            GameSingletonManager.TrainingManager!._IsReqRefresh = true;
     }
 
     [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]

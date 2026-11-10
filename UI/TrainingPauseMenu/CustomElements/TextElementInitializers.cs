@@ -16,10 +16,12 @@ public class RowButtonInitializer : CustomElementBase
 
 public class SpinnerItemTextInitializer : CustomElementBase
 {
-    public SpinnerItemTextInitializer(CustomMessage message)
+    public SpinnerItemTextInitializer(CustomMessage message,
+        app.InputAssign.Digital.Id inputGuide = app.InputAssign.Digital.Id.Invalid)
     {
         Type = app.training.ItemType.TEXT_ONLY;
         MessageID = message;
         IsEnabled = true;
+        GuidIcon = inputGuide;
     }
 }
