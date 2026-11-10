@@ -65,7 +65,11 @@ public static class CustomInputGuideHook
 
             if (paramData.CurrentData == null)
             {
-                if (paramData.ViewDataList[paramData.SecondaryListIndex]?.Data?.FuncType is { } value)
+                var secondaryIndex = paramData.SecondaryListIndex;
+                if (secondaryIndex < 0 || secondaryIndex >= paramData.ViewDataList.Count)
+                    return;
+
+                if (paramData.ViewDataList[secondaryIndex]?.Data?.FuncType is { } value)
                     functype = value; // value is automatically unwrapped and non-nullable here
                 else
                     return;
