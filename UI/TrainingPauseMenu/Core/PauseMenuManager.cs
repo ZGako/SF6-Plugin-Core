@@ -399,6 +399,7 @@ public static class PauseMenuManager
             _isDirty = false;
             ModificationRequestPaths.Clear();
             RootNode.Clear();
+            TrainingModeRefreshRequestBag.Clear();
 
             // Clear all registered custom function types and their associated delegates
             FunctionTypeRegistry.Clear();
