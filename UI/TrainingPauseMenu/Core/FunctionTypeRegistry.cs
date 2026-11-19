@@ -22,10 +22,8 @@ internal static class FunctionTypeRegistry
     {
         // since the mappings have to be unique, check if the name is already registered
         if (ForwardLookup.TryGetValue(id, out var value))
-        {
-            API.LogWarning($"Custom Function type '{id}' is already registered.");
+            // API.LogWarning($"Custom Function type '{id}' is already registered.");
             return value;
-        }
 
         var funcType = TrainingFuncTypeMax + Interlocked.Increment(ref _customFunctionCount);
 

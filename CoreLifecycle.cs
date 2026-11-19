@@ -30,6 +30,7 @@ public static class CoreLifecycle
         // so any remaining registered modifications can be cleanly restored first
         PauseMenuManager.ClearTrainingPauseMenuHooks();
         OptionsSettingsManager.ClearOptionsSettingsHooks();
+        ShortcutManager.ClearShortcuts();
 
         // clear services
         GameSingletonManager.Clear();

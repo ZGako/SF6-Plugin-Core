@@ -265,7 +265,8 @@ public static class PauseMenuManager
                 targetElementMo = childNode.CachedElement
                                   ?? gameUIDataArray.GetValue(index) as ManagedObject
                                   ?? throw new InvalidOperationException(
-                                      $"Element at index {index} is null or not a ManagedObject. Cannot copy fields.");
+                                      $"Element at index {index} is null or not a ManagedObject. Cannot copy fields." +
+                                      $"Traversal path is {string.Join(", ", traversalPath)} and request ${modificationRequest}.");
 
                 gameUIDataMo = (targetElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
                 currentNode = childNode;
