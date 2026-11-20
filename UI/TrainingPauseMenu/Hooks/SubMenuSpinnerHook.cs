@@ -1,4 +1,4 @@
-﻿using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.Services;
 using SF6_Plugin_Core.UI.Helpers;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
@@ -121,13 +121,38 @@ public static class SubMenuSpinnerHook
         }
     }
 
+    private static (int maxValues, int mappedIndex, int actualValue) SyncViewData(
+        app.training.UIFlowTrainingMenu.Param.ViewData viewData,
+        SubMenuSpinnerInitDelegate initDelegate,
+        SubMenuSpinnerLimitDelegate? limitDelegate)
+    {
+        var data = viewData.Data;
+
+        if (limitDelegate != null)
+        {
+            var (min, max) = limitDelegate.Invoke();
+            var limit = via.Int2.REFType.CreateValueType().As<via.Int2>();
+            limit.x = min;
+            limit.y = max;
+            data.LimitValue = limit;
+        }
+
+        var maxValues = Math.Max(1, data.LimitValue.y - data.LimitValue.x + 1);
+        var currentValue = initDelegate.Invoke();
+        var mappedIndex = Math.Clamp(currentValue - data.LimitValue.x, 0, maxValues - 1);
+
+        viewData.Index = mappedIndex;
+        return (maxValues, mappedIndex, mappedIndex + data.LimitValue.x);
+    }
+
     [MethodHook(typeof(app.UIPartsScrollList), "InitList", MethodHookType.Pre)]
     public static PreHookResult OnInitList(Span<ulong> args)
     {
         try
         {
             var address = args[1];
-            // so if we are initializing
+            app.training.UIFlowTrainingMenu.Param.ViewData? viewData;
+
             if (s_isInitializing)
             {
                 if (PerThreadViewData.Value == null || PerThreadViewData.Value.Count == 0)
@@ -135,56 +160,22 @@ public static class SubMenuSpinnerHook
 
                 // pop the queue, read its values and record the address mapping for all elements
                 // so row indices stay aligned with ViewDataList even when preexisting game elements are present
-                var viewData = PerThreadViewData.Value.Dequeue();
+                viewData = PerThreadViewData.Value.Dequeue();
                 ViewDataForUIPartAddress.TryAdd(address, viewData);
-
-                var data = viewData.Data;
-                if (!FunctionTypeRegistry.TryGetFunctionId((int)data.FuncType, out var functionId) ||
-                    !CustomSubMenuSpinners.TryGetValue(functionId, out var callbacks))
-                    return PreHookResult.Continue;
-
-                if (callbacks.LimitDelegate != null)
-                {
-                    var (min, max) = callbacks.LimitDelegate.Invoke();
-                    var limit = via.Int2.REFType.CreateValueType().As<via.Int2>();
-                    limit.x = min;
-                    limit.y = max;
-                    data.LimitValue = limit;
-                }
-
-                var maxValues = data.LimitValue.y - data.LimitValue.x + 1;
-                var initValue = callbacks.InitDelegate.Invoke();
-                var mappedInitIndex = Math.Clamp(initValue - data.LimitValue.x, 0, maxValues - 1);
-
-                viewData.Index = mappedInitIndex;
-                args[2] = (ulong)maxValues;
-                args[3] = (ulong)mappedInitIndex;
             }
-            else
+            else if (!ViewDataForUIPartAddress.TryGetValue(address, out viewData))
             {
-                // in the case where we're not initializing (meaning it is the changing focus operation) we compare the address to the dictionary we have.
-                if (ViewDataForUIPartAddress.TryGetValue(address, out var viewData))
-                {
-                    var data = viewData.Data;
-                    if (!FunctionTypeRegistry.TryGetFunctionId((int)data.FuncType, out var functionId) ||
-                        !CustomSubMenuSpinners.TryGetValue(functionId, out var callbacks))
-                        return PreHookResult.Continue;
-
-                    if (callbacks.LimitDelegate != null)
-                    {
-                        var (min, max) = callbacks.LimitDelegate.Invoke();
-                        var limit = via.Int2.REFType.CreateValueType().As<via.Int2>();
-                        limit.x = min;
-                        limit.y = max;
-                        data.LimitValue = limit;
-                    }
-
-                    var maxValues = data.LimitValue.y - data.LimitValue.x + 1;
-                    viewData.Index = Math.Clamp(viewData.Index, 0, maxValues - 1);
-                    args[2] = (ulong)maxValues;
-                    args[3] = (ulong)viewData.Index;
-                }
+                return PreHookResult.Continue;
             }
+
+            var data = viewData.Data;
+            if (!FunctionTypeRegistry.TryGetFunctionId((int)data.FuncType, out var functionId) ||
+                !CustomSubMenuSpinners.TryGetValue(functionId, out var callbacks))
+                return PreHookResult.Continue;
+
+            var (maxValues, mappedIndex, _) = SyncViewData(viewData, callbacks.InitDelegate, callbacks.LimitDelegate);
+            args[2] = (ulong)maxValues;
+            args[3] = (ulong)mappedIndex;
         }
         catch (Exception ex)
         {
@@ -306,24 +297,34 @@ public static class SubMenuSpinnerHook
 
         var param = ManagedObject.FromAddress(s_hasPendingUpdateAddress)
             .As<app.training.BaseParam>();
+        var pendingIndex = s_pendingIndex;
+        var pendingIsAction = s_pendingIsAction;
         s_hasPendingUpdateAddress = 0; // Always clear to prevent stale state on subsequent calls
 
         try
         {
-            if (s_pendingIndex < 0 || s_pendingIndex >= ViewDataForUIPartAddress.Count) return;
-            var (address, viewData) = ViewDataForUIPartAddress.GetAt(s_pendingIndex);
+            if (pendingIndex < 0 || pendingIndex >= ViewDataForUIPartAddress.Count) return;
+            var (address, viewData) = ViewDataForUIPartAddress.GetAt(pendingIndex);
             var data = viewData.Data;
 
             if (!FunctionTypeRegistry.TryGetFunctionId((int)data.FuncType, out var functionId) ||
                 !CustomSubMenuSpinners.TryGetValue(functionId, out var callbacks))
                 return;
 
-            var actualValue = viewData.Index + data.LimitValue.x;
-
-            if (s_pendingIsAction)
+            int actualValue;
+            if (pendingIsAction)
+            {
+                actualValue = viewData.Index + data.LimitValue.x;
                 // here call the training menu func with the offset-adjusted value
                 GameSingletonManager.TrainingManager!._UIFunc.Function(data.FuncType, param, viewData,
                     actualValue);
+            }
+            else
+            {
+                // Keep LimitValue and viewData.Index synced with the backing value during non-action refreshes
+                // (e.g. Initialize, focus changes, or UpdateList() after another row changes bounds/mode).
+                actualValue = SyncViewData(viewData, callbacks.InitDelegate, callbacks.LimitDelegate).actualValue;
+            }
 
             var partsScrollList = ManagedObject.FromAddress(address).As<app.UIPartsScrollList>();
             var selectItemText = partsScrollList._List.GetGuiChild("c_selectItem").As<via.gui.SelectItem>();
