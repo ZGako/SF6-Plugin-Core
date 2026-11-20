@@ -1,4 +1,4 @@
-﻿using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.Services;
 using SF6_Plugin_Core.UI.Helpers;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
@@ -10,7 +10,8 @@ public static class CustomInputGuideHook
     public const float DefaultCustomTextBaseX = 560f;
     private const int AnimationFrameCount = 20;
 
-    private static readonly ConcurrentDictionary<Guid, (app.InputAssign.Digital.Id InputId, float XPos)>
+    private static readonly ConcurrentDictionary<Guid, (app.InputAssign.Digital.Id InputId1, app.InputAssign.Digital.Id
+            InputId2, app.InputAssign.Digital.Id InputId3, float XPos)>
         CustomSecondaryListEntries = [];
 
     private static readonly ManagedStringPool StringPool = new();
@@ -24,11 +25,13 @@ public static class CustomInputGuideHook
 
     internal static void RegisterCustomSecondaryList(
         Guid id,
-        app.InputAssign.Digital.Id inputId,
+        app.InputAssign.Digital.Id inputId1,
+        app.InputAssign.Digital.Id inputId2 = app.InputAssign.Digital.Id.Invalid,
+        app.InputAssign.Digital.Id inputId3 = app.InputAssign.Digital.Id.Invalid,
         float xPos = DefaultCustomTextBaseX)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomSecondaryListEntries.TryAdd(id, (inputId, xPos));
+            CustomSecondaryListEntries.TryAdd(id, (inputId1, inputId2, inputId3, xPos));
         else
             throw new InvalidOperationException(
                 $"Custom secondary list '{id}' is not registered. Call RegisterNewFunctionType first.");
@@ -83,7 +86,7 @@ public static class CustomInputGuideHook
                 !CustomSecondaryListEntries.TryGetValue(functionId, out var entry))
                 return;
 
-            var (inputGuideId, xPos) = entry;
+            var (inputGuideId1, inputGuideId2, inputGuideId3, xPos) = entry;
 
             // we verified that the funcType has a request here, then we check if the elements already exist
             var uiPartsItem = paramData.SecondaryList.GetFocusItem();
@@ -164,7 +167,15 @@ public static class CustomInputGuideHook
                 return;
             }
 
-            var str = StringPool.GetOrCreate($"<INPT id=\"{inputGuideId.ToString()}\" type=\"d\">");
+            var parts = new List<string>(3);
+            if (inputGuideId1 != app.InputAssign.Digital.Id.Invalid)
+                parts.Add($"<INPT id=\"{inputGuideId1}\" type=\"d\">");
+            if (inputGuideId2 != app.InputAssign.Digital.Id.Invalid)
+                parts.Add($"<INPT id=\"{inputGuideId2}\" type=\"d\">");
+            if (inputGuideId3 != app.InputAssign.Digital.Id.Invalid)
+                parts.Add($"<INPT id=\"{inputGuideId3}\" type=\"d\">");
+
+            var str = StringPool.GetOrCreate(string.Join(" / ", parts));
             (customText as IObject)?.Call("set_Message", str);
 
 
