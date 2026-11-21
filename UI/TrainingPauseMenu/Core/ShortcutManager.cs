@@ -10,8 +10,8 @@ namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 ///     Handles injection of custom (or duplicated) shortcuts into the game's shortcut settings.
 ///     <para>
 ///         Every change is queued and applied on <see cref="LateUpdateBehavior" />: the original
-///         <c>_SettingUserData.Data</c> array is restored, the previously injected save items are removed from
-///         <c>SettingSaveData.ItemDataList</c>, and then every active registration is re-appended.
+///         <c>_SettingUserData.Data</c> array is restored, previously injected save items and any entries with
+///         non-pre-existing shortcut types are pruned, and then every active registration is re-appended.
 ///     </para>
 /// </summary>
 public static class ShortcutManager
@@ -29,12 +29,14 @@ public static class ShortcutManager
     private static readonly ConcurrentDictionary<int, Action[]> UpdateActions = [];
     private static readonly ConcurrentDictionary<int, Action[]> ReleaseActions = [];
 
+    private static readonly Lazy<HashSet<int>> PreExistingShortcutTypesLazy = new(ComputePreExistingShortcutTypes);
     private static readonly Lazy<int> ShortcutTypeMaxLazy = new(ComputeShortcutTypeMax);
 
     private static ManagedObject? _originalSettingArrayMo; // globalized copy of the original Data array
     private static ManagedObject? _injectedSettingArrayMo; // globalized array currently assigned by us
     private static int _customTypeCount;
     private static volatile bool _isDirty;
+    private static volatile bool _hasApplied;
 
     /// <summary>
     ///     Highest value declared in <c>app.ShortcutSettingData.EShortcutType</c>. Custom shortcuts are assigned
@@ -111,32 +113,31 @@ public static class ShortcutManager
     [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
     public static void OnLateUpdateBehavior()
     {
-        if (!_isDirty) return;
+        if (!_isDirty && !_hasApplied) return;
 
         lock (ShortcutLock)
         {
-            if (!_isDirty) return;
+            if (!_isDirty && !_hasApplied) return;
 
             // Keep the requests queued until the shortcut settings exist
             var shortcutSetting = GameSingletonManager.ShortcutSetting;
             if (shortcutSetting == null) return;
+
+            if (!_isDirty && !NeedsReapply(shortcutSetting)) return;
+
+            // Wait until both the setting array and save list are populated before injecting
+            if (ActiveRegistrations.Count > 0 && !IsShortcutDataReady(shortcutSetting)) return;
 
             _isDirty = false;
             RebuildShortcuts(shortcutSetting);
         }
     }
 
-    private static void RebuildShortcuts(app.ShortcutSetting shortcutSetting)
+    private static void RestoreAppliedData(app.ShortcutSetting shortcutSetting, bool releaseInactive)
     {
-        if (!ShortcutLock.IsHeldByCurrentThread)
-            throw new SynchronizationLockException("RebuildShortcuts must be called while holding ShortcutLock.");
-
         var settingUserData = shortcutSetting._SettingUserData;
         var itemDataList = shortcutSetting.SettingSaveData?.ItemDataList;
 
-        // ------------------------------------------
-        // RESTORE PHASE
-        // ------------------------------------------
         // 1. Record live save data of still-active shortcuts and strip every injected save item from the list
         // (the game may already have released the list/items during teardown, so everything is guarded)
         foreach (var registration in AppliedRegistrations)
@@ -158,26 +159,67 @@ public static class ShortcutManager
                 API.LogWarning($"[ShortcutManager] Failed to remove save item during restore: {ex.Message}");
             }
 
-            if (!isStillActive) registration.Release();
+            if (releaseInactive && !isStillActive) registration.Release();
         }
 
         AppliedRegistrations.Clear();
+        _hasApplied = false;
 
-        // 2. Restore the original setting data array
-        if (_originalSettingArrayMo != null && settingUserData != null)
+        // 2. Prune any remaining save items whose shortcut type does not pre-exist in the game
+        if (itemDataList != null)
+            try
+            {
+                for (var i = itemDataList.Count - 1; i >= 0; i--)
+                {
+                    var saveItem = itemDataList[i];
+                    if (saveItem != null && !IsPreExistingShortcutType(saveItem.ShortCutType))
+                        itemDataList.RemoveAt(i);
+                }
+            }
+            catch (Exception ex)
+            {
+                API.LogWarning($"[ShortcutManager] Failed to prune unknown save items during restore: {ex.Message}");
+            }
+
+        // 3. Restore the original setting data array and prune any non-pre-existing types
+        if (settingUserData != null)
         {
-            var originalArray = _originalSettingArrayMo.As<app.ShortcutSettingData_Array1D>();
-            if (originalArray != null) settingUserData.Data = originalArray;
+            if (_originalSettingArrayMo != null)
+            {
+                var originalArray = _originalSettingArrayMo.As<app.ShortcutSettingData_Array1D>();
+                if (originalArray != null) settingUserData.Data = originalArray;
+            }
+
+            try
+            {
+                PruneUnknownSettingData(settingUserData);
+            }
+            catch (Exception ex)
+            {
+                API.LogWarning(
+                    $"[ShortcutManager] Failed to prune unknown setting data during restore: {ex.Message}");
+            }
         }
 
         _injectedSettingArrayMo?.ReleaseIfGlobalized();
         _injectedSettingArrayMo = null;
 
-        // 3. Reset the type allocation and the dispatch tables
+        // 4. Reset the type allocation and the dispatch tables
         _customTypeCount = 0;
         TriggerActions.Clear();
         UpdateActions.Clear();
         ReleaseActions.Clear();
+    }
+
+    private static void RebuildShortcuts(app.ShortcutSetting shortcutSetting)
+    {
+        if (!ShortcutLock.IsHeldByCurrentThread)
+            throw new SynchronizationLockException("RebuildShortcuts must be called while holding ShortcutLock.");
+
+        // ------------------------------------------
+        // RESTORE PHASE
+        // ------------------------------------------
+        RestoreAppliedData(shortcutSetting, true);
 
         if (ActiveRegistrations.Count == 0)
         {
@@ -190,6 +232,9 @@ public static class ShortcutManager
         // ------------------------------------------
         // APPLY PHASE
         // ------------------------------------------
+        var settingUserData = shortcutSetting._SettingUserData;
+        var itemDataList = shortcutSetting.SettingSaveData?.ItemDataList;
+
         if (settingUserData == null)
         {
             API.LogWarning("[ShortcutManager] _SettingUserData is null. Cannot inject shortcuts.");
@@ -232,6 +277,55 @@ public static class ShortcutManager
 
         settingUserData.Data = newArr;
         _injectedSettingArrayMo = newArrMo;
+        _hasApplied = AppliedRegistrations.Count > 0;
+    }
+
+    private static bool IsShortcutDataReady(app.ShortcutSetting shortcutSetting)
+    {
+        try
+        {
+            var settingData = shortcutSetting._SettingUserData?.Data;
+            if (settingData == null || settingData.Length == 0) return false;
+
+            var itemDataList = shortcutSetting.SettingSaveData?.ItemDataList;
+            return itemDataList is { Count: > 0 };
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool NeedsReapply(app.ShortcutSetting shortcutSetting)
+    {
+        if (AppliedRegistrations.Count == 0) return false;
+
+        try
+        {
+            var settingData = shortcutSetting._SettingUserData?.Data;
+            var itemDataList = shortcutSetting.SettingSaveData?.ItemDataList;
+            if (settingData == null || itemDataList == null || itemDataList.Count == 0) return false;
+
+            if (_originalSettingArrayMo != null)
+            {
+                var originalArr = _originalSettingArrayMo.As<app.ShortcutSettingData_Array1D>();
+                if (originalArr != null && settingData.Length != originalArr.Length + AppliedRegistrations.Count)
+                    return true;
+            }
+
+            foreach (var registration in AppliedRegistrations)
+            {
+                if (registration.SaveDataMo == null) return true;
+                var saveItem = registration.SaveDataMo.As<app.ShortcutSaveData.ShortcutSettingItemSaveData>();
+                if (saveItem == null || !itemDataList.Contains(saveItem)) return true;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -258,9 +352,9 @@ public static class ShortcutManager
 
             ActiveRegistrations.Clear();
 
-            // With no active registrations, a rebuild restores the original data and releases the cache
+            // With no active registrations, a rebuild restores the original data, prunes unknown types, and releases the cache
             var shortcutSetting = GameSingletonManager.ShortcutSetting;
-            if (shortcutSetting != null && (AppliedRegistrations.Count > 0 || _originalSettingArrayMo != null))
+            if (shortcutSetting != null)
                 try
                 {
                     RebuildShortcuts(shortcutSetting);
@@ -273,6 +367,7 @@ public static class ShortcutManager
             // Fallback cleanup in case the game data was unreachable
             foreach (var registration in AppliedRegistrations) registration.Release();
             AppliedRegistrations.Clear();
+            _hasApplied = false;
             foreach (var registration in removed) registration.Release();
 
             _injectedSettingArrayMo?.ReleaseIfGlobalized();
@@ -293,6 +388,48 @@ public static class ShortcutManager
     #endregion
 
     #region Hooks
+
+    /// <summary>
+    ///     Restores vanilla shortcut data before <c>app.ShortcutSetting.Init</c> runs so the game does not
+    ///     initialize default save items for our injected shortcuts or overwrite them in place.
+    /// </summary>
+    [MethodHook(typeof(app.ShortcutSetting), "Init", MethodHookType.Pre)]
+    public static PreHookResult OnShortcutInitPre(Span<ulong> args)
+    {
+        lock (ShortcutLock)
+        {
+            if (AppliedRegistrations.Count > 0 || _originalSettingArrayMo != null)
+            {
+                var shortcutSetting = GameSingletonManager.ShortcutSetting ??
+                                      API.GetManagedSingletonT<app.ShortcutSetting>();
+                if (shortcutSetting != null)
+                    try
+                    {
+                        RestoreAppliedData(shortcutSetting, false);
+                    }
+                    catch (Exception ex)
+                    {
+                        API.LogWarning($"[ShortcutManager] Failed to restore shortcut data before Init: {ex.Message}");
+                    }
+
+                _originalSettingArrayMo?.ReleaseIfGlobalized();
+                _originalSettingArrayMo = null;
+            }
+
+            if (ActiveRegistrations.Count > 0) _isDirty = true;
+        }
+
+        return PreHookResult.Continue;
+    }
+
+    [MethodHook(typeof(app.ShortcutSetting), "Init", MethodHookType.Post)]
+    public static void OnShortcutInitPost(ref ulong retval)
+    {
+        lock (ShortcutLock)
+        {
+            if (ActiveRegistrations.Count > 0) _isDirty = true;
+        }
+    }
 
     /// <summary>
     ///     Runs before training mode tears down.
@@ -367,28 +504,70 @@ public static class ShortcutManager
         return copyMo;
     }
 
-    private static int ComputeShortcutTypeMax()
+    private static void PruneUnknownSettingData(app.ShortcutSettingUserData settingUserData)
     {
-        var max = int.MinValue;
+        var data = settingUserData.Data;
+        if (data == null) return;
+
+        var length = data.Length;
+        var validCount = 0;
+        for (var i = 0; i < length; i++)
+        {
+            var entry = data[i];
+            if (entry == null || IsPreExistingShortcutType(entry.ShortCutType)) validCount++;
+        }
+
+        if (validCount == length) return;
+
+        var prunedMo = app.ShortcutSettingData.REFType.CreateManagedArray((uint)validCount);
+        var pruned = prunedMo.As<app.ShortcutSettingData_Array1D>();
+        var writeIndex = 0;
+        for (var i = 0; i < length; i++)
+        {
+            var entry = data[i];
+            if (entry == null || IsPreExistingShortcutType(entry.ShortCutType)) pruned[writeIndex++] = entry!;
+        }
+
+        settingUserData.Data = pruned;
+
+        // Keep the cached original array in sync if it contained non-pre-existing types
+        if (_originalSettingArrayMo == null) return;
+
+        _originalSettingArrayMo.ReleaseIfGlobalized();
+        prunedMo.Globalize();
+        _originalSettingArrayMo = prunedMo;
+    }
+
+    private static bool IsPreExistingShortcutType(app.ShortcutSettingData.EShortcutType shortcutType)
+    {
+        var preExistingTypes = PreExistingShortcutTypesLazy.Value;
+        return preExistingTypes.Count == 0 || preExistingTypes.Contains((int)shortcutType);
+    }
+
+    private static HashSet<int> ComputePreExistingShortcutTypes()
+    {
+        var values = new HashSet<int>();
 
         var typeDef = API.GetTDB().FindType("app.ShortcutSettingData.EShortcutType");
         if (typeDef != null)
-            foreach (var field in typeDef.GetFields())
-                if (field.IsStatic() && field.IsLiteral())
-                {
-                    var value = Convert.ToInt32(field.GetDataBoxed(0, false));
-                    if (value > max) max = value;
-                }
+            foreach (var field in typeDef.GetFields().Where(field => field.IsStatic() && field.IsLiteral()))
+                values.Add(Convert.ToInt32(field.GetDataBoxed(0, false)));
+
+        if (values.Count > 0) return values;
 
         // Fallback to the generated enum if the TDB lookup failed
-        if (max == int.MinValue)
-        {
-            API.LogWarning("[ShortcutManager] EShortcutType not found in TDB, falling back to the generated enum.");
-            foreach (var value in Enum.GetValues<app.ShortcutSettingData.EShortcutType>())
-                max = Math.Max(max, Convert.ToInt32(value));
-        }
+        API.LogWarning("[ShortcutManager] EShortcutType not found in TDB, falling back to the generated enum.");
+        foreach (var value in Enum.GetValues<app.ShortcutSettingData.EShortcutType>())
+            values.Add(Convert.ToInt32(value));
 
-        return max;
+        return values;
+    }
+
+    private static int ComputeShortcutTypeMax()
+    {
+        return PreExistingShortcutTypesLazy.Value.Count > 0
+            ? PreExistingShortcutTypesLazy.Value.Max()
+            : int.MinValue;
     }
 
     private static void InvokeUnregisterCallback(ShortcutRegistration registration)
