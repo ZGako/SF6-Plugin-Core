@@ -1,4 +1,4 @@
-﻿using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.Localization;
 
@@ -54,8 +54,11 @@ public class FieldOverrideRequest : ExclusiveModificationRequest
 
         if (LimitValue.HasValue)
         {
-            element.LimitValue.x = LimitValue.Value.Item1;
-            element.LimitValue.y = LimitValue.Value.Item2;
+            var limit = via.Int2.REFType.CreateValueType().As<via.Int2>();
+            limit.x = LimitValue.Value.Item1;
+            limit.y = LimitValue.Value.Item2;
+
+            element.LimitValue = limit;
         }
     }
 

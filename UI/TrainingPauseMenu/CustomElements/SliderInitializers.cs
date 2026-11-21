@@ -19,3 +19,18 @@ public class SliderInitializer : CustomElementBase
         Interval_Option = intervalOption;
     }
 }
+
+public class DriveSliderInitializer : CustomElementBase
+{
+    public DriveSliderInitializer(CustomMessage message, CustomMessage guideMessage,
+        (int, int) limitValue,
+        bool isEnabled = true)
+    {
+        Type = app.training.ItemType.SLIDER_DRIVE;
+        MessageID = message;
+        GuideMessage = guideMessage;
+        IsEnabled = isEnabled;
+        LimitValue = limitValue;
+        GuidIcon = app.InputAssign.Digital.Id.UITrainingOptionY;
+    }
+}

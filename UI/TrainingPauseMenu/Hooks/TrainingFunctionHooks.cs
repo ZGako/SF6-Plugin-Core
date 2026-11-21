@@ -21,7 +21,7 @@ public static class TrainingFunctionHooks
     ///     In the SpinList submenus, it instead is used per each spinner to indicate which index value it is currently on (so
     ///     duplicate information with what is present int he viewdata basically)
     /// </param>
-    public delegate bool FunctionDelegate(app.training.BaseParam baseParam,
+    public delegate FunctionResult FunctionDelegate(app.training.BaseParam baseParam,
         app.training.UIFlowTrainingMenu.Param.ViewData viewData, int focusIndex);
 
     // A dictionary mapping our custom FuncType integers to C# lambdas
@@ -90,12 +90,12 @@ public static class TrainingFunctionHooks
             }
 
             // Invoke function
-            s_returnValueForCustomFunction = action.Invoke(baseParam, viewData, (int)args[5]);
-
+            var result = action.Invoke(baseParam, viewData, (int)args[5]);
+            s_returnValueForCustomFunction = result.ReturnValue;
             s_handledCustomFunction = true;
 
             // Skip the game's original handler
-            return PreHookResult.Skip;
+            return result.HookResult;
         }
 
         return PreHookResult.Continue;
@@ -143,6 +143,7 @@ public static class TrainingFunctionHooks
         // Adjust the FuncType to match our custom range
         if (CustomOptionSelectFunctions.TryGetValue(functionId!, out var action))
         {
+            FunctionResult result;
             try
             {
                 var rowIndex = (int)args[5];
@@ -151,7 +152,8 @@ public static class TrainingFunctionHooks
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
 
                 // Invoke function
-                s_returnValueForCustomOptionSelectFunction = action.Invoke(baseParam, viewData, rowIndex);
+                result = action.Invoke(baseParam, viewData, rowIndex);
+                s_returnValueForCustomOptionSelectFunction = result.ReturnValue;
             }
             catch (Exception ex)
             {
@@ -164,7 +166,7 @@ public static class TrainingFunctionHooks
             s_handledCustomOptionSelectFunction = true;
 
             // Skip the game's original handler
-            return PreHookResult.Skip;
+            return result.HookResult;
         }
 
         return PreHookResult.Continue;
@@ -211,12 +213,14 @@ public static class TrainingFunctionHooks
 
         if (CustomOptionXFunctions.TryGetValue(functionId, out var action))
         {
+            FunctionResult result;
             try
             {
                 var rowIndex = (int)args[5];
                 var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
-                s_returnValueForCustomOptionXFunction = action.Invoke(baseParam, viewData, rowIndex);
+                result = action.Invoke(baseParam, viewData, rowIndex);
+                s_returnValueForCustomOptionXFunction = result.ReturnValue;
             }
             catch (Exception ex)
             {
@@ -225,7 +229,7 @@ public static class TrainingFunctionHooks
             }
 
             s_handledCustomOptionXFunction = true;
-            return PreHookResult.Skip;
+            return result.HookResult;
         }
 
         return PreHookResult.Continue;
@@ -268,12 +272,14 @@ public static class TrainingFunctionHooks
 
         if (CustomOptionYFunctions.TryGetValue(functionId, out var action))
         {
+            FunctionResult result;
             try
             {
                 var rowIndex = (int)args[5];
                 var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
-                s_returnValueForCustomOptionYFunction = action.Invoke(baseParam, viewData, rowIndex);
+                result = action.Invoke(baseParam, viewData, rowIndex);
+                s_returnValueForCustomOptionYFunction = result.ReturnValue;
             }
             catch (Exception ex)
             {
@@ -282,7 +288,7 @@ public static class TrainingFunctionHooks
             }
 
             s_handledCustomOptionYFunction = true;
-            return PreHookResult.Skip;
+            return result.HookResult;
         }
 
         return PreHookResult.Continue;
@@ -306,5 +312,29 @@ public static class TrainingFunctionHooks
         CustomOptionSelectFunctions.Clear();
         CustomOptionXFunctions.Clear();
         CustomOptionYFunctions.Clear();
+    }
+
+    public readonly struct FunctionResult
+    {
+        public readonly bool ReturnValue;
+        public readonly PreHookResult HookResult;
+
+        public FunctionResult(bool returnValue, PreHookResult hookResult = PreHookResult.Skip)
+        {
+            ReturnValue = returnValue;
+            HookResult = hookResult;
+        }
+
+        // Allows `return true;` or `return false;` to default to PreHookResult.Skip
+        public static implicit operator FunctionResult(bool returnValue)
+        {
+            return new FunctionResult(returnValue);
+        }
+
+        // Optional: allows `return (false, PreHookResult.Continue);` for clean tuple syntax
+        public static implicit operator FunctionResult((bool returnValue, PreHookResult hookResult) tuple)
+        {
+            return new FunctionResult(tuple.returnValue, tuple.hookResult);
+        }
     }
 }
