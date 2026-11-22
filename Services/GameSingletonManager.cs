@@ -313,11 +313,8 @@ public static class GameSingletonManager
     [MethodHook(typeof(app.ShortcutSetting), "Init", MethodHookType.Pre)]
     public static PreHookResult OnShortcutInitReleasePre(Span<ulong> args)
     {
-        API.LogInfo("[SHORTCUTS] init");
         if (SingletonReadyStates.TryGetValue(GameSingletonTypes.ShortcutSetting, out var isReady) && isReady)
         {
-            API.LogInfo(
-                $"[SHORTCUT] Is loaded = {ShortcutSetting?.IsLoaded}, the list is {ShortcutSetting?.SettingSaveData?.ItemDataList?.Count}");
             ShortcutManager.ClearShortcuts();
 
             ShortcutSetting = null;
