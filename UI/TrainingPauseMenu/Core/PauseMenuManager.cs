@@ -9,7 +9,7 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 /// <summary>
-///     Controls dynamic layout restructuring, element injection, and hooks for the training mode pause menu.
+///     Controls dynamic layout restructuring, element elimination, injection, and hooks for the training mode pause menu.
 /// </summary>
 public static class PauseMenuManager
 {
@@ -168,6 +168,7 @@ public static class PauseMenuManager
                     var hasModifications = currentNode.ReorderRequest != null ||
                                            currentNode.FieldOverrideRequest != null ||
                                            currentNode.Appends.Count > 0 ||
+                                           currentNode.Removals.Count > 0 ||
                                            currentNode.Hooks.Count > 0;
 
                     if (!hasModifications)
@@ -188,11 +189,24 @@ public static class PauseMenuManager
                         foreach (var hookRequest in currentNode.Hooks) hookRequest.AddHook(functionId);
                     }
 
-                    if (currentNode.ReorderRequest != null || currentNode.Appends.Count > 0)
+                    if (currentNode.ReorderRequest != null ||
+                        currentNode.Appends.Count > 0 ||
+                        currentNode.Removals.Count > 0)
                     {
                         // Use childArrayMo so this works identically for both RootNode (_MenuData) and child nodes (_ChildData)
                         var originalChildArray = childArrayMo?.As<app.training.TrainingMenuData_Array1D>();
                         var originalChildLength = originalChildArray?.Length ?? 0;
+
+                        HashSet<int> removedIndices = [];
+                        foreach (var removeRequest in currentNode.Removals)
+                        foreach (var idx in removeRequest.IndicesToRemove)
+                        {
+                            if (idx < 0 || idx >= originalChildLength)
+                                throw new InvalidOperationException(
+                                    $"Remove index {idx} is out of bounds for array of length {originalChildLength}.");
+
+                            removedIndices.Add(idx);
+                        }
 
                         var allNewElements = new List<app.training.TrainingMenuData>[originalChildLength + 2];
                         for (var i = 0; i < allNewElements.Length; i++) allNewElements[i] = [];
@@ -210,7 +224,8 @@ public static class PauseMenuManager
 
                         var newArrMo =
                             app.training.TrainingMenuData.REFType.CreateManagedArray(
-                                (uint)(originalChildLength + allNewElements.Sum(list => list.Count)));
+                                (uint)(originalChildLength - removedIndices.Count +
+                                       allNewElements.Sum(list => list.Count)));
                         newArrMo.Globalize();
                         var newArr = newArrMo.As<app.training.TrainingMenuData_Array1D>();
 
@@ -220,7 +235,8 @@ public static class PauseMenuManager
                         for (var targetIndex = 0; targetIndex < originalChildLength; targetIndex++)
                         {
                             var originalIndex = currentNode.ReorderRequest?.GetMapping(targetIndex) ?? targetIndex;
-                            newArr[newIndex++] = originalChildArray![originalIndex];
+                            if (!removedIndices.Contains(originalIndex))
+                                newArr[newIndex++] = originalChildArray![originalIndex];
                             foreach (var newElement in allNewElements[originalIndex + 1])
                                 newArr[newIndex++] = newElement;
                         }
@@ -298,6 +314,7 @@ public static class PauseMenuManager
             {
                 ReorderRequest reorderRequest => currentNode.RequestReorder(reorderRequest),
                 PauseMenuAppendElementsRequest appendRequest => currentNode.RequestAppend(appendRequest),
+                RemoveElementsRequest removeRequest => currentNode.RequestRemove(removeRequest),
                 FieldOverrideRequest overrideRequest when currentNode != RootNode => currentNode.RequestFieldOverride(
                     overrideRequest),
                 IUIHookRequest hookRequest when currentNode != RootNode => currentNode.RequestHook(hookRequest),
@@ -314,7 +331,7 @@ public static class PauseMenuManager
             else
             {
                 API.LogWarning(
-                    $"Modification request of type {modificationRequest.GetType().Name} is already registered at this path. Cannot register again.");
+                    $"Modification request of type {modificationRequest.GetType().Name} conflicts with an existing request at path [{string.Join(", ", traversalPath)}].");
             }
         }
     }
@@ -354,6 +371,9 @@ public static class PauseMenuManager
                 break;
             case PauseMenuAppendElementsRequest appendRequest:
                 currentNode.ClearAppendRequest(appendRequest);
+                break;
+            case RemoveElementsRequest removeRequest:
+                currentNode.ClearRemoveRequest(removeRequest);
                 break;
             case FieldOverrideRequest:
                 currentNode.ClearFieldOverrideRequest();
@@ -409,6 +429,8 @@ public static class PauseMenuManager
         public FieldOverrideRequest? FieldOverrideRequest { get; private set; } // optional field override request
         private List<PauseMenuAppendElementsRequest> AppendRequests { get; } = []; // list of append requests
         public System.Collections.Generic.IReadOnlyList<PauseMenuAppendElementsRequest> Appends => AppendRequests;
+        private List<RemoveElementsRequest> RemoveRequests { get; } = []; // list of remove requests
+        public System.Collections.Generic.IReadOnlyList<RemoveElementsRequest> Removals => RemoveRequests;
         private List<IUIHookRequest> HookRequests { get; } = []; // list of hook requests
         public System.Collections.Generic.IReadOnlyList<IUIHookRequest> Hooks => HookRequests;
 
@@ -476,6 +498,21 @@ public static class PauseMenuManager
             AppendRequests.Remove(appendRequest);
         }
 
+        public bool RequestRemove(RemoveElementsRequest removeRequest)
+        {
+            var hasOverlap = RemoveRequests.Any(existing =>
+                existing.IndicesToRemove.Overlaps(removeRequest.IndicesToRemove));
+            if (hasOverlap) return false;
+
+            RemoveRequests.Add(removeRequest);
+            return true;
+        }
+
+        public void ClearRemoveRequest(RemoveElementsRequest removeRequest)
+        {
+            RemoveRequests.Remove(removeRequest);
+        }
+
         public bool RequestHook(IUIHookRequest hookRequest)
         {
             var incomingType = hookRequest.GetType();
@@ -497,7 +534,7 @@ public static class PauseMenuManager
 
         /// <summary>
         ///     Clears the cached element and all child nodes, as well as any registered modification requests (reorder, override,
-        ///     append, hook) for this node and its children.
+        ///     append, remove, hook) for this node and its children.
         /// </summary>
         public void Clear()
         {
@@ -507,6 +544,7 @@ public static class PauseMenuManager
             ClearReorderRequest();
             ClearFieldOverrideRequest();
             foreach (var appendRequest in AppendRequests.ToList()) ClearAppendRequest(appendRequest);
+            RemoveRequests.Clear();
             foreach (var hookRequest in HookRequests.ToList()) ClearDHookRequest(hookRequest);
 
             CachedElement?.ReleaseIfGlobalized();
