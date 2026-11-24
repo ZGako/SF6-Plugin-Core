@@ -8,7 +8,8 @@ public class SliderInitializer : CustomElementBase
         (int, int) limitValue,
         int interval,
         int intervalOption,
-        bool isEnabled = true)
+        bool isEnabled = true,
+        CustomMessage? endWordsGuid = null)
     {
         Type = app.training.ItemType.SLIDER;
         MessageID = message;
@@ -17,6 +18,7 @@ public class SliderInitializer : CustomElementBase
         LimitValue = limitValue;
         Interval = interval;
         Interval_Option = intervalOption;
+        EndWordsGuid = endWordsGuid;
     }
 }
 
@@ -39,13 +41,16 @@ public class VitalSliderInitializer : CustomElementBase
 {
     public VitalSliderInitializer(CustomMessage message, CustomMessage guideMessage,
         (int, int) limitValue,
-        bool isEnabled = true)
+        bool isEnabled = true,
+        CustomMessage? endWordsGuid = null,
+        int intervalOption = 1)
     {
         Type = app.training.ItemType.SLIDER_VITAL_1P;
         MessageID = message;
         GuideMessage = guideMessage;
         IsEnabled = isEnabled;
         LimitValue = limitValue;
-        EndWordsGuid = new CustomMessage(Guid.Parse("86bf146b-7aa4-447c-8a20-35e4cb943b7d"));
+        EndWordsGuid = endWordsGuid;
+        Interval_Option = intervalOption;
     }
 }
