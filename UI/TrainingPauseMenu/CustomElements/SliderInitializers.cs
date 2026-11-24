@@ -43,7 +43,8 @@ public class VitalSliderInitializer : CustomElementBase
         (int, int) limitValue,
         bool isEnabled = true,
         CustomMessage? endWordsGuid = null,
-        int intervalOption = 1)
+        int intervalOption = 1,
+        app.InputAssign.Digital.Id guidIcon = app.InputAssign.Digital.Id.Invalid)
     {
         Type = app.training.ItemType.SLIDER_VITAL_1P;
         MessageID = message;
@@ -52,5 +53,6 @@ public class VitalSliderInitializer : CustomElementBase
         LimitValue = limitValue;
         EndWordsGuid = endWordsGuid;
         Interval_Option = intervalOption;
+        GuidIcon = guidIcon;
     }
 }
