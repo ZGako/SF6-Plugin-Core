@@ -19,7 +19,7 @@ public static class SpinBoxHook
     internal static void RegisterCustomSpinBoxInitialization(Guid id, SpinBoxInitDelegate initDelegate)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomInitializations.TryAdd(id, initDelegate);
+            CustomInitializations[id] = initDelegate;
         else
             throw new InvalidOperationException(
                 $"Custom spinbox initialization function '{id}' is not registered. Call RegisterNewFunctionType first.");

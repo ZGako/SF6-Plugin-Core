@@ -11,7 +11,7 @@ public class ValueTypeHooks
     internal static void RegisterCustomValueType(Guid id, ValueTypeDelegate action)
     {
         if (OptionTypeRegistry.TryGetOptionType(id, out var _))
-            CustomValueTypes.TryAdd(id, action);
+            CustomValueTypes[id] = action;
         else
             throw new InvalidOperationException(
                 $"Custom ValueType {id} is not registered. Call RegisterNewOptionType first.");

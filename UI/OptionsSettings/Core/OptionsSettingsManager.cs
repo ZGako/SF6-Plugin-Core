@@ -606,7 +606,10 @@ public static class OptionsSettingsManager
         public void ClearNewTabRequest(AppendNewTabRequest newTabRequest, List<Action> pendingDisposals)
         {
             if (NewTabRequests.Remove(newTabRequest))
-                pendingDisposals.Add(newTabRequest.Reset);
+            {
+                newTabRequest.ClearHooks();
+                pendingDisposals.Add(newTabRequest.ReleaseResources);
+            }
         }
 
         public bool RequestReorder(ReorderRequest reorderRequest)
@@ -630,7 +633,10 @@ public static class OptionsSettingsManager
         public void ClearAppendRequest(OptionsAppendElementsRequest appendRequest, List<Action> pendingDisposals)
         {
             if (AppendRequests.Remove(appendRequest))
-                pendingDisposals.Add(appendRequest.Reset);
+            {
+                appendRequest.ClearHooks();
+                pendingDisposals.Add(appendRequest.ReleaseResources);
+            }
         }
 
         public bool RequestRemove(RemoveElementsRequest removeRequest)

@@ -61,7 +61,7 @@ public static class TrainingFunctionHooks
     internal static void RegisterCustomFunction(Guid id, FunctionDelegate action)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomFunctions.TryAdd(id, action);
+            CustomFunctions[id] = action;
         else
             throw new InvalidOperationException(
                 $"Custom function '{id}' is not registered. Call RegisterNewFunctionType first.");
@@ -116,7 +116,7 @@ public static class TrainingFunctionHooks
         // Generate a unique FuncType integer for this custom function
 
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomOptionSelectFunctions.TryAdd(id, action);
+            CustomOptionSelectFunctions[id] = action;
         else
             throw new InvalidOperationException(
                 $"Custom option select function '{id}' is not registered. Call RegisterNewFunctionType first.");
@@ -176,7 +176,7 @@ public static class TrainingFunctionHooks
     internal static void RegisterCustomOptionXFunction(Guid id, FunctionDelegate action)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomOptionXFunctions.TryAdd(id, action);
+            CustomOptionXFunctions[id] = action;
         else
             throw new InvalidOperationException(
                 $"Custom option X function '{id}' is not registered. Call RegisterNewFunctionType first.");
@@ -230,7 +230,7 @@ public static class TrainingFunctionHooks
     internal static void RegisterCustomOptionYFunction(Guid id, FunctionDelegate action)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomOptionYFunctions.TryAdd(id, action);
+            CustomOptionYFunctions[id] = action;
         else
             throw new InvalidOperationException(
                 $"Custom option Y function '{id}' is not registered. Call RegisterNewFunctionType first.");

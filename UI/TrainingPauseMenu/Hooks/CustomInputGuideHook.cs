@@ -31,7 +31,7 @@ public static class CustomInputGuideHook
         float xPos = DefaultCustomTextBaseX)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomSecondaryListEntries.TryAdd(id, (inputId1, inputId2, inputId3, xPos));
+            CustomSecondaryListEntries[id] = (inputId1, inputId2, inputId3, xPos);
         else
             throw new InvalidOperationException(
                 $"Custom secondary list '{id}' is not registered. Call RegisterNewFunctionType first.");

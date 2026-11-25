@@ -885,7 +885,10 @@ public static class PauseMenuManager
         public void ClearAppendRequest(PauseMenuAppendElementsRequest appendRequest, List<Action> pendingDisposals)
         {
             if (AppendRequests.Remove(appendRequest))
-                pendingDisposals.Add(appendRequest.Reset);
+            {
+                appendRequest.ClearHooks();
+                pendingDisposals.Add(appendRequest.ReleaseResources);
+            }
         }
 
         public bool RequestRemove(RemoveElementsRequest removeRequest)

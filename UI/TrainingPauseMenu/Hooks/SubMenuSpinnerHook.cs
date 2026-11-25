@@ -50,7 +50,7 @@ public static class SubMenuSpinnerHook
         MaskThisItemRowDelegate? maskThisItemRow = null)
     {
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomSubMenuSpinners.TryAdd(id, (initDelegate, formatDelegate, limitDelegate, maskThisItemRow));
+            CustomSubMenuSpinners[id] = (initDelegate, formatDelegate, limitDelegate, maskThisItemRow);
         else
             throw new InvalidOperationException(
                 $"Custom submenu spinner '{id}' is not registered. Call RegisterNewFunctionType first.");

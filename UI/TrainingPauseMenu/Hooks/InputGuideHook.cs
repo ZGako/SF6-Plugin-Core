@@ -22,7 +22,7 @@ public static class InputGuideHook
         // Generate a unique FuncType integer for this custom function
 
         if (FunctionTypeRegistry.TryGetFunctionType(id, out var _))
-            CustomInputGuideDelegates.TryAdd(id, action);
+            CustomInputGuideDelegates[id] = action;
         else
             throw new InvalidOperationException(
                 $"Custom input guide function '{id}' is not registered. Call RegisterNewFunctionType first.");

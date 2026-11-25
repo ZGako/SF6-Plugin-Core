@@ -1,4 +1,4 @@
-﻿using SF6_Plugin_Core.UI.OptionsSettings.Core;
+using SF6_Plugin_Core.UI.OptionsSettings.Core;
 
 namespace SF6_Plugin_Core.UI.OptionsSettings.Hooks;
 
@@ -13,7 +13,7 @@ public class DisableReasonHooks
     internal static void RegisterDisableCondition(Guid id, DisableConditionDelegate condition)
     {
         if (OptionTypeRegistry.TryGetOptionType(id, out var _))
-            CustomDisableConditions.TryAdd(id, condition);
+            CustomDisableConditions[id] = condition;
         else
             throw new InvalidOperationException(
                 $"Custom Option {id} is not registered. Call RegisterNewOptionType first.");

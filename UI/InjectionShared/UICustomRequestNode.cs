@@ -1,4 +1,4 @@
-﻿namespace SF6_Plugin_Core.UI.InjectionShared;
+namespace SF6_Plugin_Core.UI.InjectionShared;
 
 public abstract class UICustomRequestNode<TType, TInstantiation>(Guid functionId, TInstantiation customInitializer)
     where TInstantiation : IUICustomElementInitialization<TType>
@@ -48,16 +48,31 @@ public abstract class UICustomRequestNode<TType, TInstantiation>(Guid functionId
 
     internal abstract TType Build();
 
-    /// this is the full clear method that's called when the element gets completely removed from the tree
-    internal void Clear()
+    /// <summary>
+    ///     Unregisters C# hooks on this node and its descendants immediately (does not release native objects).
+    /// </summary>
+    internal void ClearHooks()
     {
-        // traverse the children and clear them
-        foreach (var child in ChildNodes) child.Clear();
+        foreach (var child in ChildNodes) child.ClearHooks();
+        foreach (var hook in HookInstructions) hook.ClearHook();
+    }
+
+    /// <summary>
+    ///     Releases native/engine objects held by this node and its descendants.
+    /// </summary>
+    internal void ClearNativeResources()
+    {
+        foreach (var child in ChildNodes) child.ClearNativeResources();
         ChildDataArrayMo?.ReleaseIfGlobalized();
         ChildDataArrayMo = null;
 
         CustomInitializer.Clear();
+    }
 
-        foreach (var hook in HookInstructions) hook.ClearHook();
+    /// this is the full clear method that's called when the element gets completely removed from the tree
+    internal void Clear()
+    {
+        ClearHooks();
+        ClearNativeResources();
     }
 }

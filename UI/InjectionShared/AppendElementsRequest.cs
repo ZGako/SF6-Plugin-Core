@@ -36,9 +36,20 @@ public class AppendElementsRequest<TNode, TType, TInstantiation>(
         return appendList;
     }
 
+    public void ClearHooks()
+    {
+        foreach (var (_, elementNode) in NewElements) elementNode.ClearHooks();
+    }
+
+    public void ReleaseResources()
+    {
+        foreach (var (_, elementNode) in NewElements) elementNode.ClearNativeResources();
+    }
+
     public void Reset()
     {
-        foreach (var (_, elementNode) in NewElements) elementNode.Clear();
+        ClearHooks();
+        ReleaseResources();
     }
 
     public override AppendElementsRequest<TNode, TType, TInstantiation> Clone()
