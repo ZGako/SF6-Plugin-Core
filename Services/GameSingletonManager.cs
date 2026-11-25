@@ -130,6 +130,9 @@ public static class GameSingletonManager
 
             SingletonReadyStates[singletonType] = true;
 
+            if (singletonType == GameSingletonTypes.TrainingManager)
+                LogTrainingManagerState("OnReady");
+
             // Callbacks are optional: only fire them if something registered
             if (RegisteredSingletons.TryGetValue(singletonType, out var hooks))
                 try
@@ -212,11 +215,56 @@ public static class GameSingletonManager
         }
     }
 
+    private static void LogTrainingManagerState(string phase, bool? wasReady = null)
+    {
+        try
+        {
+            var tmMo = API.GetManagedSingleton("app.training.TrainingManager");
+            var tmAddr = tmMo?.GetAddress() ?? 0;
+            if (tmMo == null || tmAddr == 0 || !ManagedObject.IsManagedObject(tmAddr))
+            {
+                API.LogInfo(
+                    $"[GameSingletonManager] TrainingManager {phase}: singleton=null (wasReady={wasReady?.ToString() ?? "n/a"})");
+                return;
+            }
+
+            var tm = tmMo.As<app.training.TrainingManager>();
+            if (tm == null)
+            {
+                API.LogInfo(
+                    $"[GameSingletonManager] TrainingManager {phase}: addr=0x{tmAddr:X}, proxy=null (wasReady={wasReady?.ToString() ?? "n/a"})");
+                return;
+            }
+
+            var uiDataMo = app.training.TrainingManager.REFType?.GetField("_UIData")
+                ?.GetDataBoxed(tmAddr, false) as ManagedObject;
+            var uiDataAddr = uiDataMo?.GetAddress() ?? 0;
+            var isValidUiData = uiDataAddr != 0 && ManagedObject.IsManagedObject(uiDataAddr);
+            var menuDataMo = isValidUiData
+                ? app.training.TrainingPauseMenuUserData.REFType?.GetField("_MenuData")
+                    ?.GetDataBoxed(uiDataAddr, false) as ManagedObject
+                : null;
+            var menuDataAddr = menuDataMo?.GetAddress() ?? 0;
+
+            API.LogInfo(
+                $"[GameSingletonManager] TrainingManager {phase}: wasReady={wasReady?.ToString() ?? "n/a"}, " +
+                $"IsInit={tm.IsInit}, IsSetuped={tm.IsSetuped}, IsLoaded={tm.IsLoaded}, " +
+                $"_IsReqRelease={tm._IsReqRelease}, _UIData=0x{uiDataAddr:X}, _MenuData=0x{menuDataAddr:X}");
+        }
+        catch (Exception ex)
+        {
+            API.LogWarning($"[GameSingletonManager] Failed logging TrainingManager state ({phase}): {ex.Message}");
+        }
+    }
+
     private static void ReleaseTrainingManagerState()
     {
         _isReleasingTrainingManager = true;
 
-        if (SingletonReadyStates.TryGetValue(GameSingletonTypes.TrainingManager, out var isReady) && isReady)
+        var isReady = SingletonReadyStates.TryGetValue(GameSingletonTypes.TrainingManager, out var ready) && ready;
+        LogTrainingManagerState("ReleasePre", isReady);
+
+        if (isReady)
         {
             if (RegisteredSingletons.TryGetValue(GameSingletonTypes.TrainingManager, out var hooks))
                 hooks.InvokeOnRelease();

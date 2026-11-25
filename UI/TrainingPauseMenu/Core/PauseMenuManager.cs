@@ -134,9 +134,9 @@ public static class PauseMenuManager
         return elem;
     }
 
-    private static ManagedObject? TryGetUIDataMo()
+    private static ManagedObject? TryGetUIDataMo(bool allowDuringRelease = false)
     {
-        if (GameSingletonManager.TrainingManager == null) return null;
+        if (!allowDuringRelease && GameSingletonManager.TrainingManager == null) return null;
 
         var trainingManagerMo = API.GetManagedSingleton("app.training.TrainingManager");
         if (!IsValidManagedObject(trainingManagerMo)) return null;
@@ -466,28 +466,63 @@ public static class PauseMenuManager
                         newArrMo.Globalize();
                         var newArr = newArrMo.As<app.training.TrainingMenuData_Array1D>();
 
-                        var newIndex = 0;
-                        foreach (var newElement in allNewElements[0]) newArr[newIndex++] = newElement;
-
-                        for (var targetIndex = 0; targetIndex < originalChildLength; targetIndex++)
+                        try
                         {
-                            var originalIndex = currentNode.ReorderRequest?.GetMapping(targetIndex) ?? targetIndex;
-                            if (!removedIndices.Contains(originalIndex))
-                                newArr[newIndex++] = originalChildArray![originalIndex];
-                            foreach (var newElement in allNewElements[originalIndex + 1])
+                            var newIndex = 0;
+                            foreach (var newElement in allNewElements[0]) newArr[newIndex++] = newElement;
+
+                            for (var targetIndex = 0; targetIndex < originalChildLength; targetIndex++)
+                            {
+                                int originalIndex;
+                                try
+                                {
+                                    originalIndex = currentNode.ReorderRequest?.GetMapping(targetIndex) ?? targetIndex;
+                                }
+                                catch (ArgumentOutOfRangeException)
+                                {
+                                    var nodeLabel = currentNode == RootNode
+                                        ? "Root"
+                                        : currentElement?.FuncType.ToString() ?? "null";
+                                    var childSummary = originalChildArray == null
+                                        ? "null"
+                                        : string.Join(", ", Enumerable.Range(0, originalChildLength).Select(i =>
+                                        {
+                                            var item = originalChildArray[i];
+                                            return item == null
+                                                ? $"[{i}]=null"
+                                                : $"[{i}]=Func:{(int)item.FuncType}/Type:{item.Type}";
+                                        }));
+                                    API.LogError(
+                                        $"[PauseMenuManager] Reorder mapping out of range during RebuildUI: " +
+                                        $"targetIndex={targetIndex}, originalChildLength={originalChildLength}, node={nodeLabel}, " +
+                                        $"childArrayMo=0x{childArrayMo?.GetAddress() ?? 0:X}, " +
+                                        $"snapshotOriginalChildDataMo=0x{currentNode.Snapshot?.OriginalChildDataMo?.GetAddress() ?? 0:X}, " +
+                                        $"elements=[{childSummary}]");
+                                    throw;
+                                }
+
+                                if (!removedIndices.Contains(originalIndex))
+                                    newArr[newIndex++] = originalChildArray![originalIndex];
+                                foreach (var newElement in allNewElements[originalIndex + 1])
+                                    newArr[newIndex++] = newElement;
+                            }
+
+                            foreach (var newElement in allNewElements[originalChildLength + 1])
                                 newArr[newIndex++] = newElement;
+
+                            // Assign back to _UIData._MenuData for RootNode, or _ChildData for regular elements
+                            if (currentNode == RootNode)
+                                SetUIDataMo(newArrMo);
+                            else
+                                currentElement!.ChildData = newArr;
+
+                            currentNode.CustomChildArrayMo = newArrMo;
                         }
-
-                        foreach (var newElement in allNewElements[originalChildLength + 1])
-                            newArr[newIndex++] = newElement;
-
-                        // Assign back to _UIData._MenuData for RootNode, or _ChildData for regular elements
-                        if (currentNode == RootNode)
-                            SetUIDataMo(newArrMo);
-                        else
-                            currentElement!.ChildData = newArr;
-
-                        currentNode.CustomChildArrayMo = newArrMo;
+                        catch
+                        {
+                            newArrMo.ReleaseIfGlobalized();
+                            throw;
+                        }
                     }
                 }
             }
@@ -534,6 +569,7 @@ public static class PauseMenuManager
                 {
                     var originalMenuDataMo = GetUIDataMo()
                                              ?? throw new InvalidOperationException("_MenuData is null.");
+                    originalMenuDataMo.Globalize();
                     RootNode.OriginalMenuDataMo = originalMenuDataMo;
                 }
                 else
@@ -633,7 +669,8 @@ public static class PauseMenuManager
                 if (UnregisterModificationCore(request))
                     _isDirty = true;
 
-            if ((_isDirty || RootNode.HasSnapshot || RootNode.Children.Count > 0) && TryGetUIDataMo() != null)
+            if ((_isDirty || RootNode.HasSnapshot || RootNode.Children.Count > 0) &&
+                TryGetUIDataMo(allowDuringRelease: true) != null)
                 try
                 {
                     RebuildUI();
@@ -662,6 +699,7 @@ public static class PauseMenuManager
     {
         private TrainingMenuDataSnapshot(ManagedObject? originalChildDataMo)
         {
+            originalChildDataMo?.Globalize();
             OriginalChildDataMo = originalChildDataMo;
         }
 
@@ -749,8 +787,20 @@ public static class PauseMenuManager
             element.LimitValue = limit;
         }
 
+        public void ReleaseResources()
+        {
+            OriginalChildDataMo?.ReleaseIfGlobalized();
+        }
+
         public void RestoreChildData(ManagedObject elementMo)
         {
+            if (OriginalChildDataMo != null && !IsValidManagedObject(OriginalChildDataMo))
+            {
+                API.LogWarning(
+                    $"[PauseMenuManager] OriginalChildDataMo 0x{OriginalChildDataMo.GetAddress():X} is no longer valid; skipping restore.");
+                return;
+            }
+
             var childDataField = TrainingMenuDataChildDataField;
             if (childDataField == null) return;
 
@@ -817,7 +867,9 @@ public static class PauseMenuManager
 
         public void ClearSnapshot()
         {
+            OriginalMenuDataMo?.ReleaseIfGlobalized();
             OriginalMenuDataMo = null;
+            Snapshot?.ReleaseResources();
             Snapshot = null;
             HasAppliedFieldOverride = false;
         }
