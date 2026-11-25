@@ -11,17 +11,20 @@ public static class BattleHudHooks
     private static event Action? BattleHudDeactivateCallback;
     private static event Action? BattleHudUnloadCallback;
 
+    private static app.BattleHudManager? TryGetBattleHudManager()
+    {
+        var list = GameSingletonManager.GuiManager?.Hud?.mHudManagerList;
+        if (list == null || list.Count == 0) return null;
+
+        return ManagedProxy<app.BattleHudManager>.Create(list[0]);
+    }
+
     public static void RegisterBattleHudSetupCallbacks(BattleHudStatusDelegate onSetup, Action onUnload)
     {
         BattleHudSetupCallback += onSetup;
         BattleHudUnloadCallback += onUnload;
 
-        if (GameSingletonManager.GuiManager == null) return; // GuiManager is not ready yet, exit early
-
-        var battleHudAsBase = GameSingletonManager.GuiManager.Hud.mHudManagerList[0];
-        var battleHudManager = ManagedProxy<app.BattleHudManager>.Create(battleHudAsBase);
-
-        // if casting failed
+        var battleHudManager = TryGetBattleHudManager();
         if (battleHudManager == null) return;
 
         if (battleHudManager.State == app.HudManagerBase.ManagerState.LOADING ||
@@ -35,12 +38,7 @@ public static class BattleHudHooks
         BattleHudActivateCallback += onActivate;
         BattleHudDeactivateCallback += onDeactivate;
 
-        if (GameSingletonManager.GuiManager == null) return; // GuiManager is not ready yet, exit early
-
-        var battleHudAsBase = GameSingletonManager.GuiManager.Hud.mHudManagerList[0];
-        var battleHudManager = ManagedProxy<app.BattleHudManager>.Create(battleHudAsBase);
-
-        // if casting failed
+        var battleHudManager = TryGetBattleHudManager();
         if (battleHudManager == null) return;
 
         if (battleHudManager.State == app.HudManagerBase.ManagerState.ACTIVATE) onActivate?.Invoke(battleHudManager);
@@ -59,57 +57,78 @@ public static class BattleHudHooks
         MethodHookType.Post)]
     public static void OnBattleHudSetupEnd(ref ulong retval)
     {
-        if (BattleHudSetupCallback == null) return; // No callbacks registered, exit early
+        var callback = BattleHudSetupCallback;
+        if (callback == null) return; // No callbacks registered, exit early
 
-        if (GameSingletonManager.GuiManager == null) return; // GuiManager is not ready yet, exit early
+        try
+        {
+            var battleHudManager = TryGetBattleHudManager();
+            if (battleHudManager == null) return;
 
-        var battleHudAsBase = GameSingletonManager.GuiManager.Hud.mHudManagerList[0];
-        var battleHudManager = ManagedProxy<app.BattleHudManager>.Create(battleHudAsBase);
+            if (battleHudManager.State ==
+                app.HudManagerBase.ManagerState.INVALID) return; // BattleHudManager is not ready yet, exit early
 
-        // if casting failed
-        if (battleHudManager == null) return;
-
-        if (battleHudManager.State ==
-            app.HudManagerBase.ManagerState.INVALID) return; // BattleHudManager is not ready yet, exit early
-        BattleHudSetupCallback?.Invoke(battleHudManager);
+            callback.Invoke(battleHudManager);
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[BattleHudHooks] Exception in OnBattleHudSetupEnd: {ex}");
+        }
     }
 
 
     [MethodHook(typeof(app.BattleHudManager), nameof(app.BattleHudManager.HudEvent_Activate), MethodHookType.Post)]
     public static void OnBattleHudActivate(ref ulong retval)
     {
-        if (BattleHudActivateCallback == null) return; // No callbacks registered, exit early
+        var callback = BattleHudActivateCallback;
+        if (callback == null) return; // No callbacks registered, exit early
 
-        if (GameSingletonManager.GuiManager == null) return; // GuiManager is not ready yet, exit early
+        try
+        {
+            var battleHudManager = TryGetBattleHudManager();
+            if (battleHudManager == null) return;
 
-        var battleHudAsBase = GameSingletonManager.GuiManager.Hud.mHudManagerList[0];
-        var battleHudManager = ManagedProxy<app.BattleHudManager>.Create(battleHudAsBase);
+            if (battleHudManager.State ==
+                app.HudManagerBase.ManagerState.INVALID) return; // BattleHudManager is not ready yet, exit early
 
-        // if casting failed
-        if (battleHudManager == null) return;
-
-        if (battleHudManager.State ==
-            app.HudManagerBase.ManagerState.INVALID) return; // BattleHudManager is not ready yet, exit early
-
-        BattleHudActivateCallback?.Invoke(battleHudManager);
+            callback.Invoke(battleHudManager);
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[BattleHudHooks] Exception in OnBattleHudActivate: {ex}");
+        }
     }
 
     [MethodHook(typeof(app.BattleHudManager), nameof(app.BattleHudManager.HudEvent_Deactivate), MethodHookType.Post)]
     public static void OnBattleHudDeactivate(ref ulong retval)
     {
-        if (BattleHudDeactivateCallback == null) return; // No callbacks registered, exit early
+        var callback = BattleHudDeactivateCallback;
+        if (callback == null) return; // No callbacks registered, exit early
 
-        BattleHudDeactivateCallback.Invoke();
+        try
+        {
+            callback.Invoke();
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[BattleHudHooks] Exception in OnBattleHudDeactivate: {ex}");
+        }
     }
 
     [MethodHook(typeof(app.BattleHudManager), nameof(app.BattleHudManager.ManagerEvent_UnloadHud), MethodHookType.Post)]
     public static void OnBattleHudUnload(ref ulong retval)
     {
-        if (BattleHudUnloadCallback == null) return; // No callbacks registered, continue as normal
+        var callback = BattleHudUnloadCallback;
+        if (callback == null) return; // No callbacks registered, continue as normal
 
-        BattleHudUnloadCallback.Invoke();
-
-        // var battleHudManager = MemoryHelpers.GetAddressAs<app.BattleHudManager>(args[1]);
+        try
+        {
+            callback.Invoke();
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[BattleHudHooks] Exception in OnBattleHudUnload: {ex}");
+        }
     }
 
     internal static void ClearAllRegisteredBattleHudCallbacks()

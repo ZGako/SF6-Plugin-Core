@@ -9,6 +9,7 @@ public class CustomMessage : IDisposable
 
     // Cache the Engine-allocated ManagedObject strings
     private readonly ManagedObject?[] _cachedEngineStrings = new ManagedObject[LanguageCount];
+    private readonly Lock _cacheLock = new();
     private readonly bool _isGameMessage;
 
     // raw C# strings for each language
@@ -91,18 +92,23 @@ public class CustomMessage : IDisposable
     public ulong GetEngineStringAddress()
     {
         var langIndex = (int)via.gui.GUISystem.MessageLanguage;
+        if (langIndex < 0 || langIndex >= LanguageCount)
+            langIndex = (int)via.Language.English;
 
-        // Lazy-load: Only allocate in the engine if it's actually requested
-        if (_cachedEngineStrings[langIndex] == null)
+        lock (_cacheLock)
         {
-            // Allocate the string on the RE Engine's managed GC heap
-            var engineString = VM.CreateString(_translations[langIndex]);
-            engineString.Globalize();
+            // Lazy-load: Only allocate in the engine if it's actually requested
+            if (_cachedEngineStrings[langIndex] == null)
+            {
+                // Allocate the string on the RE Engine's managed GC heap
+                var engineString = VM.CreateString(_translations[langIndex]);
+                engineString.Globalize();
 
-            _cachedEngineStrings[langIndex] = engineString;
+                _cachedEngineStrings[langIndex] = engineString;
+            }
+
+            return _cachedEngineStrings[langIndex]!.GetAddress();
         }
-
-        return _cachedEngineStrings[langIndex]!.GetAddress();
     }
 
     /// <summary>
@@ -110,10 +116,13 @@ public class CustomMessage : IDisposable
     /// </summary>
     public void ClearCachedEngineStrings()
     {
-        for (var i = 0; i < _cachedEngineStrings.Length; i++)
+        lock (_cacheLock)
         {
-            _cachedEngineStrings[i]?.ReleaseIfGlobalized();
-            _cachedEngineStrings[i] = null;
+            for (var i = 0; i < _cachedEngineStrings.Length; i++)
+            {
+                _cachedEngineStrings[i]?.ReleaseIfGlobalized();
+                _cachedEngineStrings[i] = null;
+            }
         }
     }
 }

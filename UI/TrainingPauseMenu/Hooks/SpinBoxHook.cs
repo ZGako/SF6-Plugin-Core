@@ -33,50 +33,57 @@ public static class SpinBoxHook
     [MethodHook(typeof(app.training.UIFlowTrainingMenu.Param), "InitSpinBox(System.Int32)", MethodHookType.Pre)]
     public static PreHookResult OnInitSpinBoxPre(Span<ulong> args)
     {
-        var currentObject = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[1]);
-
-        if (currentObject == null)
+        try
         {
-            API.LogWarning("Failed to retrieve current UIFlowTrainingMenu.Param object.");
-            return PreHookResult.Continue;
-        }
+            var currentObject = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param>(args[1]);
 
-        var currentIndex = (int)args[2];
-
-        // get the current spinbox
-        if (currentIndex < 0 || currentIndex >= currentObject.ViewDataList.Count) return PreHookResult.Continue;
-
-        var currentSpinBox = currentObject.ViewDataList[currentIndex].Data;
-
-        if (!FunctionTypeRegistry.TryGetFunctionId((int)currentSpinBox.FuncType, out var functionId))
-            return PreHookResult.Continue;
-
-        if (CustomInitializations.TryGetValue(functionId, out var initDelegate))
-        {
-            // Invoke the custom initialization logic
-            var returnVal = initDelegate.Invoke(currentObject);
-
-            var selectedFuncType = returnVal switch
+            if (currentObject == null)
             {
-                TrainingFuncOrGuid { IsGuid: true, GuidValue: var guid } =>
-                    FunctionTypeRegistry.TryGetFunctionType(guid, out var funcType_ret)
-                        ? funcType_ret
-                        : throw new InvalidOperationException(
-                            $"Custom spinbox initialization delegate returned an unregistered function type ID '{guid}'."),
-                TrainingFuncOrGuid { IsGuid: false, IntValue: var intValue } =>
-                    (int)intValue < FunctionTypeRegistry.TrainingFuncTypeMax
-                        ? (int)intValue
-                        : throw new InvalidOperationException(
-                            $"Custom spinbox initialization delegate returned an invalid function type integer '{intValue}'.")
-            };
+                API.LogWarning("Failed to retrieve current UIFlowTrainingMenu.Param object.");
+                return PreHookResult.Continue;
+            }
 
-            // search the childdata for the element of the selectedFuncType and set the index to that element
-            for (var i = 0; i < currentSpinBox.ChildData.Count; i++)
-                if ((int)currentSpinBox.ChildData[i].FuncType == selectedFuncType)
+            var currentIndex = (int)args[2];
+
+            // get the current spinbox
+            if (currentIndex < 0 || currentIndex >= currentObject.ViewDataList.Count) return PreHookResult.Continue;
+
+            var currentSpinBox = currentObject.ViewDataList[currentIndex].Data;
+
+            if (!FunctionTypeRegistry.TryGetFunctionId((int)currentSpinBox.FuncType, out var functionId))
+                return PreHookResult.Continue;
+
+            if (CustomInitializations.TryGetValue(functionId, out var initDelegate))
+            {
+                // Invoke the custom initialization logic
+                var returnVal = initDelegate.Invoke(currentObject);
+
+                var selectedFuncType = returnVal switch
                 {
-                    currentObject.ViewDataList[currentIndex].Index = i;
-                    break;
-                }
+                    TrainingFuncOrGuid { IsGuid: true, GuidValue: var guid } =>
+                        FunctionTypeRegistry.TryGetFunctionType(guid, out var funcType_ret)
+                            ? funcType_ret
+                            : throw new InvalidOperationException(
+                                $"Custom spinbox initialization delegate returned an unregistered function type ID '{guid}'."),
+                    TrainingFuncOrGuid { IsGuid: false, IntValue: var intValue } =>
+                        (int)intValue < FunctionTypeRegistry.TrainingFuncTypeMax
+                            ? (int)intValue
+                            : throw new InvalidOperationException(
+                                $"Custom spinbox initialization delegate returned an invalid function type integer '{intValue}'.")
+                };
+
+                // search the childdata for the element of the selectedFuncType and set the index to that element
+                for (var i = 0; i < currentSpinBox.ChildData.Count; i++)
+                    if ((int)currentSpinBox.ChildData[i].FuncType == selectedFuncType)
+                    {
+                        currentObject.ViewDataList[currentIndex].Index = i;
+                        break;
+                    }
+            }
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"Exception in SpinBoxHook.OnInitSpinBoxPre: {ex.Message}");
         }
 
         return PreHookResult.Continue;

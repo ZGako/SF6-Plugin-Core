@@ -54,15 +54,34 @@ public static class UIPrefabLoader
             () => prefab.Ready,
             () =>
             {
+                ManagedObject? gameObjectMo = null;
                 try
                 {
                     var pos = via.vec3.REFType.CreateValueType().As<via.vec3>();
-                    var gameObjectMo = (prefab as IObject)?.Call("instantiate(via.vec3)", pos) as ManagedObject
-                                       ?? throw new InvalidOperationException(
-                                           $"Failed to instantiate prefab: {prefabPath}");
+                    gameObjectMo = (prefab as IObject)?.Call("instantiate(via.vec3)", pos) as ManagedObject
+                                   ?? throw new InvalidOperationException(
+                                       $"Failed to instantiate prefab: {prefabPath}");
 
                     gameObjectMo.Globalize();
                     onPrefabCreated(gameObjectMo);
+                    gameObjectMo = null; // ownership transferred to callback
+                }
+                catch (Exception ex)
+                {
+                    API.LogError($"[UIPrefabLoader] Error creating UI prefab '{prefabPath}': {ex}");
+                    if (gameObjectMo != null)
+                    {
+                        try
+                        {
+                            via.GameObject.destroy(gameObjectMo.As<via.GameObject>());
+                        }
+                        catch
+                        {
+                            // Best-effort engine destroy on callback failure
+                        }
+
+                        gameObjectMo.ReleaseIfGlobalized();
+                    }
                 }
                 finally
                 {

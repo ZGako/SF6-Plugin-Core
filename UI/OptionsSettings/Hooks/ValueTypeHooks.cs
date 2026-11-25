@@ -1,4 +1,4 @@
-﻿using SF6_Plugin_Core.UI.OptionsSettings.Core;
+using SF6_Plugin_Core.UI.OptionsSettings.Core;
 
 namespace SF6_Plugin_Core.UI.OptionsSettings.Hooks;
 
@@ -31,19 +31,26 @@ public class ValueTypeHooks
         MethodHookType.Pre)]
     public static PreHookResult OnValueTypeEvent(Span<ulong> args)
     {
-        var valueType = (int)args[1];
-
-        if (valueType <= OptionTypeRegistry.OptionTypeMax) return PreHookResult.Continue;
-
-        if (!OptionTypeRegistry.TryGetOptionId(valueType, out var id)) return PreHookResult.Continue;
-
-        if (CustomValueTypes.TryGetValue(id, out var action))
+        try
         {
-            var value = (int)args[2];
-            var isReset = args[3] == 1;
+            var valueType = (int)args[1];
 
-            action.Invoke((app.Option.ValueType)valueType, value, isReset);
-            return PreHookResult.Skip;
+            if (valueType <= OptionTypeRegistry.OptionTypeMax) return PreHookResult.Continue;
+
+            if (!OptionTypeRegistry.TryGetOptionId(valueType, out var id)) return PreHookResult.Continue;
+
+            if (CustomValueTypes.TryGetValue(id, out var action))
+            {
+                var value = (int)args[2];
+                var isReset = args[3] == 1;
+
+                action.Invoke((app.Option.ValueType)valueType, value, isReset);
+                return PreHookResult.Skip;
+            }
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[ValueTypeHooks] Exception in OnValueTypeEvent: {ex.Message}");
         }
 
         return PreHookResult.Continue;

@@ -44,12 +44,20 @@ public static class BFlowHooks
     [MethodHook(typeof(app.bFlowManager.FlowWork), nameof(app.bFlowManager.FlowWork.transition), MethodHookType.Post)]
     public static void OnFlowTransition(ref ulong retval)
     {
-        if (FlowTransitionCallback == null) return; // No callbacks registered, exit early
-
-        var flowWork = GameSingletonManager.BFlowManager!.m_flow_work;
-
         var threadSafeCopy = FlowTransitionCallback; // Make a thread-safe copy of the delegate
-        threadSafeCopy?.Invoke(flowWork);
+        if (threadSafeCopy == null) return; // No callbacks registered, exit early
+
+        try
+        {
+            var flowWork = GameSingletonManager.BFlowManager?.m_flow_work;
+            if (flowWork == null) return;
+
+            threadSafeCopy.Invoke(flowWork);
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[BFlowHooks] Exception in OnFlowTransition: {ex}");
+        }
     }
 
     internal static void ClearAllRegisteredFlowTransitions()

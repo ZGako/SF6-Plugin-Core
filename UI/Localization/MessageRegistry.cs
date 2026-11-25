@@ -8,7 +8,7 @@ internal static class MessageRegistry
 {
     private static readonly ConcurrentDictionary<Guid, CustomMessage> CustomMessages = [];
 
-    [ThreadStatic] private static CustomMessage? s_pendingMessageOverride;
+    [ThreadStatic] private static Stack<CustomMessage?>? s_pendingOverrides;
 
     /// <summary>
     ///     Registers a custom message.
@@ -27,30 +27,43 @@ internal static class MessageRegistry
     [MethodHook(typeof(app.helper.hLocalize), "getMessage(System.Guid)", MethodHookType.Pre)]
     public static PreHookResult ReplaceMessageQuery(Span<ulong> args)
     {
-        // read argument
-        var guidAddress = (IntPtr)args[1];
-        var requestedGuid = Marshal.PtrToStructure<Guid>(guidAddress);
+        s_pendingOverrides ??= new Stack<CustomMessage?>();
 
-        // Check if we have a custom message for this GUID
-        if (CustomMessages.TryGetValue(requestedGuid, out var customMsg))
+        try
         {
-            s_pendingMessageOverride = customMsg;
-            return PreHookResult.Skip;
+            if (args.Length > 1 && args[1] != 0)
+            {
+                var requestedGuid = Marshal.PtrToStructure<Guid>((IntPtr)args[1]);
+                if (CustomMessages.TryGetValue(requestedGuid, out var customMsg))
+                {
+                    s_pendingOverrides.Push(customMsg);
+                    return PreHookResult.Skip;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[MessageRegistry] Exception in ReplaceMessageQuery: {ex.Message}");
         }
 
+        s_pendingOverrides.Push(null);
         return PreHookResult.Continue;
     }
 
     [MethodHook(typeof(app.helper.hLocalize), "getMessage(System.Guid)", MethodHookType.Post)]
     public static void ReplaceMessageResponse(ref ulong retval)
     {
-        if (s_pendingMessageOverride != null)
+        if (s_pendingOverrides == null || !s_pendingOverrides.TryPop(out var pending) || pending == null)
+            return;
+
+        try
         {
             // Replace the return value with the memory address of our cached Engine String
-            retval = s_pendingMessageOverride.GetEngineStringAddress();
-
-            // Reset the override for the next call to prevent race conditions
-            s_pendingMessageOverride = null;
+            retval = pending.GetEngineStringAddress();
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[MessageRegistry] Exception in ReplaceMessageResponse: {ex.Message}");
         }
     }
 

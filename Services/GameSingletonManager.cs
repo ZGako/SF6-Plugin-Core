@@ -97,7 +97,7 @@ public static class GameSingletonManager
         {
             if (field != null) return field;
             var om = API.GetManagedSingletonT<app.OptionManager>();
-            if (om != null && om.mInitEndFlag) field = om;
+            if (om != null && om.mInitEndFlag && om.UnitLists != null) field = om;
 
             return field;
         }
@@ -132,7 +132,14 @@ public static class GameSingletonManager
 
             // Callbacks are optional: only fire them if something registered
             if (RegisteredSingletons.TryGetValue(singletonType, out var hooks))
-                hooks.InvokeOnReady();
+                try
+                {
+                    hooks.InvokeOnReady();
+                }
+                catch (Exception ex)
+                {
+                    API.LogError($"[GameSingletonManager] Exception in {singletonType} OnReady callback: {ex}");
+                }
         }
     }
 
@@ -319,25 +326,54 @@ public static class GameSingletonManager
         RegisterSingleton(GameSingletonTypes.OptionManager, true, onReady, onLoadOverwrite);
     }
 
+    public static void UnregisterOptionManager(Action onReady, Action? onLoadOverwrite = null)
+    {
+        if (RegisteredSingletons.TryGetValue(GameSingletonTypes.OptionManager, out var hooks))
+        {
+            hooks.OnReady -= onReady;
+            if (onLoadOverwrite != null) hooks.OnRelease -= onLoadOverwrite;
+        }
+    }
+
     [MethodHook(typeof(app.OptionManager), "LoadValueData(app.Option.OptionSaveData)", MethodHookType.Post)]
     public static void OnLoadValueData(ref ulong retval)
     {
         if (SingletonReadyStates.TryGetValue(GameSingletonTypes.OptionManager, out var isReady) && isReady)
             if (RegisteredSingletons.TryGetValue(GameSingletonTypes.OptionManager, out var hooks))
             {
-                hooks.InvokeOnRelease();
+                try
+                {
+                    hooks.InvokeOnRelease();
+                }
+                catch (Exception ex)
+                {
+                    API.LogError($"[GameSingletonManager] Exception in OptionManager OnRelease callback: {ex}");
+                }
 
-                hooks.InvokeOnReady();
+                try
+                {
+                    hooks.InvokeOnReady();
+                }
+                catch (Exception ex)
+                {
+                    API.LogError($"[GameSingletonManager] Exception in OptionManager OnReady callback: {ex}");
+                }
             }
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="GuiManager" /> becomes available.
+    ///     Registers a callback to run when <see cref="ShortcutSetting" /> becomes available.
     /// </summary>
     /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
     public static void RegisterShortcutSetting(Action onReady)
     {
         RegisterSingleton(GameSingletonTypes.ShortcutSetting, false, onReady, null);
+    }
+
+    public static void UnregisterShortcutSetting(Action onReady)
+    {
+        if (RegisteredSingletons.TryGetValue(GameSingletonTypes.ShortcutSetting, out var hooks))
+            hooks.OnReady -= onReady;
     }
 
     [MethodHook(typeof(app.ShortcutSetting), "Init", MethodHookType.Pre)]

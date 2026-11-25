@@ -13,11 +13,8 @@ public static class InputGuideHook
     private static readonly ConcurrentDictionary<Guid, InputGuideDelegate> CustomInputGuideDelegates = [];
 
 
-    [ThreadStatic] private static ulong s_pendingOutInputGuideDataListPtr;
-
-    [ThreadStatic] private static ulong s_pendingOutStringListPtr;
-
-    [ThreadStatic] private static int s_handledCustomFunction;
+    [ThreadStatic]
+    private static Stack<(int FuncType, ulong GuideDataListPtr, ulong StringListPtr)>? s_pendingCalls;
 
 
     internal static void RegisterCustomInputGuideFunction(Guid id, InputGuideDelegate action)
@@ -42,24 +39,28 @@ public static class InputGuideHook
         MethodHookType.Pre)]
     public static PreHookResult OnGetGuideDataPre(Span<ulong> args)
     {
-        var currentMenuData = ManagedObject.ToManagedObject(args[2])?.As<app.training.TrainingMenuData>();
+        s_pendingCalls ??= new Stack<(int, ulong, ulong)>();
+        var callState = (0, 0UL, 0UL);
 
-        if (currentMenuData == null)
+        try
         {
-            API.LogWarning("Failed to retrieve current TrainingMenuData object.");
-            return PreHookResult.Continue;
+            var currentMenuData = ManagedObject.ToManagedObject(args[2])?.As<app.training.TrainingMenuData>();
+            if (currentMenuData == null)
+            {
+                API.LogWarning("Failed to retrieve current TrainingMenuData object.");
+            }
+            else if (FunctionTypeRegistry.TryGetFunctionId((int)currentMenuData.FuncType, out var id) &&
+                     CustomInputGuideDelegates.ContainsKey(id))
+            {
+                callState = ((int)currentMenuData.FuncType, args[3], args[4]);
+            }
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"Exception in InputGuideHook.OnGetGuideDataPre: {ex.Message}");
         }
 
-        if (!FunctionTypeRegistry.TryGetFunctionId((int)currentMenuData.FuncType, out var id))
-            return PreHookResult.Continue;
-
-        if (CustomInputGuideDelegates.ContainsKey(id))
-        {
-            s_handledCustomFunction = (int)currentMenuData.FuncType;
-            s_pendingOutInputGuideDataListPtr = args[3];
-            s_pendingOutStringListPtr = args[4];
-        }
-
+        s_pendingCalls.Push(callState);
         return PreHookResult.Continue;
     }
 
@@ -68,18 +69,20 @@ public static class InputGuideHook
         MethodHookType.Post)]
     public static void OnGetGuideDataPost(ref ulong retval)
     {
-        if (s_pendingOutInputGuideDataListPtr == 0 || s_pendingOutStringListPtr == 0 ||
-            s_handledCustomFunction == 0) return;
+        if (s_pendingCalls == null || !s_pendingCalls.TryPop(out var callState)) return;
 
-        if (!FunctionTypeRegistry.TryGetFunctionId(s_handledCustomFunction, out var id)) return;
+        var (handledCustomFunction, outInputGuideDataListPtr, outStringListPtr) = callState;
+        if (handledCustomFunction == 0 || outInputGuideDataListPtr == 0 || outStringListPtr == 0) return;
+
+        if (!FunctionTypeRegistry.TryGetFunctionId(handledCustomFunction, out var id)) return;
 
         if (CustomInputGuideDelegates.TryGetValue(id, out var action))
             try
             {
                 // Safely dereference the pointer using Marshal
                 var dereferencedAddress1 =
-                    (ulong)Marshal.ReadInt64(new IntPtr((long)s_pendingOutInputGuideDataListPtr));
-                var dereferencedAddress2 = (ulong)Marshal.ReadInt64(new IntPtr((long)s_pendingOutStringListPtr));
+                    (ulong)Marshal.ReadInt64(new IntPtr((long)outInputGuideDataListPtr));
+                var dereferencedAddress2 = (ulong)Marshal.ReadInt64(new IntPtr((long)outStringListPtr));
 
                 var inputGuideDataList =
                     MemoryHelpers.GetAddressAs<REFrameworkNET.Collections.IList<app.InputGuideData>>(
@@ -92,12 +95,7 @@ public static class InputGuideHook
             catch (Exception ex)
             {
                 API.LogError($"Error occurred while retrieving the input guide data list: {ex.Message}");
-                return;
             }
-
-        s_handledCustomFunction = 0; // Reset after use
-        s_pendingOutInputGuideDataListPtr = 0; // Reset after use
-        s_pendingOutStringListPtr = 0; // Reset after use
     }
 
     internal static void Clear()

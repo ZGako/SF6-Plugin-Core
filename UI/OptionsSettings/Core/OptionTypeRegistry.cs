@@ -1,4 +1,4 @@
-﻿namespace SF6_Plugin_Core.UI.OptionsSettings.Core;
+namespace SF6_Plugin_Core.UI.OptionsSettings.Core;
 
 internal static class OptionTypeRegistry
 {
@@ -19,9 +19,9 @@ internal static class OptionTypeRegistry
         foreach (var field in fields)
             if (field.IsStatic() && field.IsLiteral())
             {
-                // Enum fields are static, so object address 0 is passed. 
-                // isValueType is false because we are not targeting a struct instance.
-                var val = Convert.ToInt32(field.GetDataBoxed(0, false));
+                var rawPtr = field.GetDataRaw(0, false);
+                if (rawPtr == 0) continue;
+                var val = Marshal.ReadInt32((nint)rawPtr);
                 if (val > maxVal) maxVal = val;
             }
 
@@ -34,9 +34,9 @@ internal static class OptionTypeRegistry
         foreach (var field in fields)
             if (field.IsStatic() && field.IsLiteral())
             {
-                // Enum fields are static, so object address 0 is passed. 
-                // isValueType is false because we are not targeting a struct instance.
-                var val = Convert.ToInt32(field.GetDataBoxed(0, false));
+                var rawPtr = field.GetDataRaw(0, false);
+                if (rawPtr == 0) continue;
+                var val = Marshal.ReadInt32((nint)rawPtr);
                 if (val > maxVal) maxVal = val;
             }
 

@@ -1,4 +1,4 @@
-﻿using SF6_Plugin_Core.Memory;
+using SF6_Plugin_Core.Memory;
 using SF6_Plugin_Core.Services;
 using SF6_Plugin_Core.UI.InjectionShared;
 using SF6_Plugin_Core.UI.OptionsSettings.Hooks;
@@ -16,10 +16,29 @@ public static class OptionsSettingsManager
 
     private static readonly UICachedDataNode RootNode = new(null);
     private static readonly Lock ModificationLock = new();
+    private static readonly List<Action> PendingDisposals = [];
     private static volatile bool _isDirty;
 
     // Tracks custom tabs added at the root level so they can be cleanly removed and reset on rebuild
     private static readonly List<(app.Option.TabType TabKey, ManagedObject ListMo)> AddedTabs = [];
+
+    private static void FlushPendingDisposals()
+    {
+        if (PendingDisposals.Count == 0) return;
+
+        var disposals = PendingDisposals.ToArray();
+        PendingDisposals.Clear();
+
+        foreach (var disposeAction in disposals)
+            try
+            {
+                disposeAction();
+            }
+            catch (Exception ex)
+            {
+                API.LogError($"[OptionsSettingsManager] Failed during deferred disposal: {ex}");
+            }
+    }
 
     private static REFrameworkNET.Collections.IDictionary<app.Option.TabType,
         REFrameworkNET.Collections.IList<app.Option.OptionUnitBase>>? TryGetUnitLists()
@@ -152,7 +171,17 @@ public static class OptionsSettingsManager
 
             if (TryGetUnitLists() != null)
             {
-                RebuildUI();
+                try
+                {
+                    RebuildUI();
+                    RootNode.PruneEmptyChildren();
+                }
+                catch (Exception ex)
+                {
+                    API.LogError($"[OptionsSettingsManager] RebuildUI failed: {ex}");
+                }
+
+                FlushPendingDisposals();
             }
             else
             {
@@ -164,7 +193,8 @@ public static class OptionsSettingsManager
                         singleUseRequest.ReleaseClaim();
 
                 ModificationRequestPaths.Clear();
-                RootNode.Clear();
+                RootNode.Clear(PendingDisposals);
+                FlushPendingDisposals();
                 OptionTypeRegistry.Clear();
             }
         }
@@ -466,13 +496,13 @@ public static class OptionsSettingsManager
         switch (modificationRequest)
         {
             case AppendNewTabRequest newTabRequest:
-                currentNode.ClearNewTabRequest(newTabRequest);
+                currentNode.ClearNewTabRequest(newTabRequest, PendingDisposals);
                 break;
             case ReorderRequest:
                 currentNode.ClearReorderRequest();
                 break;
             case OptionsAppendElementsRequest appendRequest:
-                currentNode.ClearAppendRequest(appendRequest);
+                currentNode.ClearAppendRequest(appendRequest, PendingDisposals);
                 break;
             case RemoveElementsRequest removeRequest:
                 currentNode.ClearRemoveRequest(removeRequest);
@@ -497,7 +527,15 @@ public static class OptionsSettingsManager
             if (unitLists != null)
             {
                 if (_isDirty || AddedTabs.Count > 0 || RootNode.Children.Count > 0)
-                    RebuildUI();
+                    try
+                    {
+                        RebuildUI();
+                    }
+                    catch (Exception ex)
+                    {
+                        API.LogError(
+                            $"[OptionsSettingsManager] RebuildUI during ClearOptionsSettingsHooks failed: {ex}");
+                    }
                 else
                     RemoveAddedTabs(unitLists);
             }
@@ -509,7 +547,8 @@ public static class OptionsSettingsManager
 
             _isDirty = false;
             ModificationRequestPaths.Clear();
-            RootNode.Clear();
+            RootNode.Clear(PendingDisposals);
+            FlushPendingDisposals();
             OptionTypeRegistry.Clear();
             DisableReasonHooks.Clear();
             ValueTypeHooks.Clear();
@@ -564,10 +603,10 @@ public static class OptionsSettingsManager
             return true;
         }
 
-        public void ClearNewTabRequest(AppendNewTabRequest newTabRequest)
+        public void ClearNewTabRequest(AppendNewTabRequest newTabRequest, List<Action> pendingDisposals)
         {
-            newTabRequest.Reset();
-            NewTabRequests.Remove(newTabRequest);
+            if (NewTabRequests.Remove(newTabRequest))
+                pendingDisposals.Add(newTabRequest.Reset);
         }
 
         public bool RequestReorder(ReorderRequest reorderRequest)
@@ -588,10 +627,10 @@ public static class OptionsSettingsManager
             return true;
         }
 
-        public void ClearAppendRequest(OptionsAppendElementsRequest appendRequest)
+        public void ClearAppendRequest(OptionsAppendElementsRequest appendRequest, List<Action> pendingDisposals)
         {
-            appendRequest.Reset();
-            AppendRequests.Remove(appendRequest);
+            if (AppendRequests.Remove(appendRequest))
+                pendingDisposals.Add(appendRequest.Reset);
         }
 
         public bool RequestRemove(RemoveElementsRequest removeRequest)
@@ -609,14 +648,33 @@ public static class OptionsSettingsManager
             RemoveRequests.Remove(removeRequest);
         }
 
-        public void Clear()
+        public void PruneEmptyChildren()
         {
-            foreach (var (_, childNode) in ChildNodes) childNode.Clear();
+            for (var i = ChildNodes.Count - 1; i >= 0; i--)
+            {
+                var child = ChildNodes[i].Item2;
+                child.PruneEmptyChildren();
+
+                var hasModifications = child.ReorderRequest != null ||
+                                       child.NewTabRequests.Count > 0 ||
+                                       child.AppendRequests.Count > 0 ||
+                                       child.RemoveRequests.Count > 0;
+
+                if (!hasModifications &&
+                    child.CachedElement == null &&
+                    child.ChildNodes.Count == 0)
+                    ChildNodes.RemoveAt(i);
+            }
+        }
+
+        public void Clear(List<Action> pendingDisposals)
+        {
+            foreach (var (_, childNode) in ChildNodes) childNode.Clear(pendingDisposals);
             ChildNodes.Clear();
 
-            foreach (var newTabRequest in NewTabRequests.ToList()) ClearNewTabRequest(newTabRequest);
+            foreach (var newTabRequest in NewTabRequests.ToList()) ClearNewTabRequest(newTabRequest, pendingDisposals);
             ClearReorderRequest();
-            foreach (var appendRequest in AppendRequests.ToList()) ClearAppendRequest(appendRequest);
+            foreach (var appendRequest in AppendRequests.ToList()) ClearAppendRequest(appendRequest, pendingDisposals);
             RemoveRequests.Clear();
 
             CachedElement?.ReleaseIfGlobalized();

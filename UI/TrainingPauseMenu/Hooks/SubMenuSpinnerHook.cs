@@ -209,6 +209,7 @@ public static class SubMenuSpinnerHook
             if (!isShowed) return PreHookResult.Continue;
 
             var isDisable = args[2] == 1;
+            if (args[1] == 0 || !ManagedObject.IsManagedObject(args[1])) return PreHookResult.Continue;
             var parts = ManagedObject.FromAddress(args[1]).As<app.UIPartsSpin>();
             var selectItem = parts._SelectItem;
 
@@ -304,14 +305,17 @@ public static class SubMenuSpinnerHook
     {
         if (s_hasPendingUpdateAddress == 0) return;
 
-        var param = ManagedObject.FromAddress(s_hasPendingUpdateAddress)
-            .As<app.training.BaseParam>();
+        var paramAddress = s_hasPendingUpdateAddress;
         var pendingIndex = s_pendingIndex;
         var pendingIsAction = s_pendingIsAction;
         s_hasPendingUpdateAddress = 0; // Always clear to prevent stale state on subsequent calls
 
         try
         {
+            if (!ManagedObject.IsManagedObject(paramAddress)) return;
+            var param = ManagedObject.FromAddress(paramAddress)
+                .As<app.training.BaseParam>();
+
             ulong address;
             app.training.UIFlowTrainingMenu.Param.ViewData viewData;
             lock (ViewDataLock)
@@ -341,6 +345,7 @@ public static class SubMenuSpinnerHook
                 actualValue = SyncViewData(viewData, callbacks.InitDelegate, callbacks.LimitDelegate).actualValue;
             }
 
+            if (address == 0 || !ManagedObject.IsManagedObject(address)) return;
             var partsScrollList = ManagedObject.FromAddress(address).As<app.UIPartsScrollList>();
             var selectItemText = partsScrollList._List.GetGuiChild("c_selectItem").As<via.gui.SelectItem>();
             var textItem = selectItemText.GetGuiChild("e_txt_0").As<via.gui.Text>();

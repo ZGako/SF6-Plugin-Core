@@ -8,7 +8,7 @@ public class DisableReasonHooks
 
     private static readonly ConcurrentDictionary<Guid, DisableConditionDelegate> CustomDisableConditions = new();
 
-    [ThreadStatic] private static ulong _disableMoAddress;
+    [ThreadStatic] private static Stack<ulong>? s_disableMoAddresses;
 
     internal static void RegisterDisableCondition(Guid id, DisableConditionDelegate condition)
     {
@@ -34,8 +34,8 @@ public class DisableReasonHooks
         MethodHookType.Pre)]
     public static PreHookResult OnGetDisablePre(Span<ulong> args)
     {
-        // Capture the target address. Matches your original snippet.
-        _disableMoAddress = args[1];
+        s_disableMoAddresses ??= new Stack<ulong>();
+        s_disableMoAddresses.Push(args.Length > 1 ? args[1] : 0);
         return PreHookResult.Continue;
     }
 
@@ -44,19 +44,27 @@ public class DisableReasonHooks
         MethodHookType.Post)]
     public static void OnGetDisable(ref ulong retval)
     {
-        if (_disableMoAddress == 0) return;
+        if (s_disableMoAddresses == null || !s_disableMoAddresses.TryPop(out var addr) || addr == 0)
+            return;
 
-        var unit = ManagedObject.ToManagedObject(_disableMoAddress)?.As<app.Option.OptionUnitBase>();
-        _disableMoAddress = 0; // Clear the thread static after use
+        try
+        {
+            if (!ManagedObject.IsManagedObject(addr)) return;
 
-        if (unit?.Setting == null) return;
-        var typeId = unit.Setting.TypeId;
+            var unit = ManagedObject.ToManagedObject(addr)?.As<app.Option.OptionUnitBase>();
+            if (unit?.Setting == null) return;
 
-        if (!OptionTypeRegistry.TryGetOptionId(typeId, out var optionGuid)) return;
+            var typeId = unit.Setting.TypeId;
+            if (!OptionTypeRegistry.TryGetOptionId(typeId, out var optionGuid)) return;
 
-        if (CustomDisableConditions.TryGetValue(optionGuid, out var condition))
-            // If the lambda evaluates to true, force the option to be disabled
-            if (condition.Invoke())
-                retval = (ulong)app.Option.DisableReasonType.Other;
+            if (CustomDisableConditions.TryGetValue(optionGuid, out var condition))
+                // If the lambda evaluates to true, force the option to be disabled
+                if (condition.Invoke())
+                    retval = (ulong)app.Option.DisableReasonType.Other;
+        }
+        catch (Exception ex)
+        {
+            API.LogError($"[DisableReasonHooks] Exception in OnGetDisable: {ex.Message}");
+        }
     }
 }

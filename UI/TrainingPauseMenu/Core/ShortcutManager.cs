@@ -129,7 +129,14 @@ public static class ShortcutManager
             if (ActiveRegistrations.Count > 0 && !IsShortcutDataReady(shortcutSetting)) return;
 
             _isDirty = false;
-            RebuildShortcuts(shortcutSetting);
+            try
+            {
+                RebuildShortcuts(shortcutSetting);
+            }
+            catch (Exception ex)
+            {
+                API.LogError($"[ShortcutManager] Failed to rebuild shortcuts: {ex}");
+            }
         }
     }
 
@@ -551,7 +558,10 @@ public static class ShortcutManager
         var typeDef = API.GetTDB().FindType("app.ShortcutSettingData.EShortcutType");
         if (typeDef != null)
             foreach (var field in typeDef.GetFields().Where(field => field.IsStatic() && field.IsLiteral()))
-                values.Add(Convert.ToInt32(field.GetDataBoxed(0, false)));
+            {
+                var rawPtr = field.GetDataRaw(0, false);
+                if (rawPtr != 0) values.Add(Marshal.ReadInt32((nint)rawPtr));
+            }
 
         if (values.Count > 0) return values;
 

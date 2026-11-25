@@ -10,8 +10,19 @@ internal static class FunctionTypeRegistry
     private static readonly ConcurrentDictionary<int, Guid> ReverseLookup = [];
     private static int _customFunctionCount;
 
-    public static readonly int TrainingFuncTypeMax =
-        Convert.ToInt32(API.GetTDB().FindType("app.training.TrainingFuncType").GetField("MAX").GetDataBoxed(0, false));
+    public static readonly int TrainingFuncTypeMax = ComputeTrainingFuncTypeMax();
+
+    private static int ComputeTrainingFuncTypeMax()
+    {
+        var field = API.GetTDB().FindType("app.training.TrainingFuncType")?.GetField("MAX");
+        if (field != null)
+        {
+            var rawPtr = field.GetDataRaw(0, false);
+            if (rawPtr != 0) return Marshal.ReadInt32((nint)rawPtr);
+        }
+
+        return (int)app.training.TrainingFuncType.MAX;
+    }
 
     /// <summary>
     ///     Registers a new custom training function type with a unique ID and returns it.
