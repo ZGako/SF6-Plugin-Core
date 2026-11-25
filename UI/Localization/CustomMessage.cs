@@ -1,7 +1,8 @@
 namespace SF6_Plugin_Core.UI.Localization;
 
 /// <summary>
-///     Represents a localizable custom message supporting multiple languages.
+///     Represents a UI text message identified by a <see cref="Guid" />, supporting either custom multi-language
+///     strings intercepted via <c>app.helper.hLocalize.getMessage</c> or pass-through vanilla SF6 message GUIDs.
 /// </summary>
 public class CustomMessage : IDisposable
 {
@@ -16,10 +17,17 @@ public class CustomMessage : IDisposable
     private readonly string[] _translations = new string[LanguageCount];
 
     /// <summary>
-    ///     Initializes a CustomMessage using either raw English fallback text or a localization JSON key.
+    ///     Creates a new custom message with a generated <see cref="Id" /> and registers it in the localization hook
+    ///     registry so engine queries for <see cref="Id" /> return the configured text.
     /// </summary>
-    /// <param name="textOrKey">The English fallback string, or the JSON key if <paramref name="isKey" /> is true.</param>
-    /// <param name="isKey">If true, looks up the pre-built translation array in LocalizationManager.</param>
+    /// <param name="textOrKey">
+    ///     Literal fallback string (used across all languages when <paramref name="isKey" /> is <see langword="false" />)
+    ///     or a lookup key registered via <see cref="LocalizationManager.LoadTranslations" />.
+    /// </param>
+    /// <param name="isKey">
+    ///     When <see langword="true" />, copies localized strings from <see cref="LocalizationManager" /> (using the
+    ///     active <see cref="LocalizationManager.UseFileScope" /> if set, or English/key fallback if missing).
+    /// </param>
     public CustomMessage(string textOrKey, bool isKey = false)
     {
         Id = Guid.NewGuid();
@@ -38,6 +46,11 @@ public class CustomMessage : IDisposable
         MessageRegistry.RegisterCustomMessage(this);
     }
 
+    /// <summary>
+    ///     Wraps an existing vanilla SF6 localization GUID without registering any hook override or allocating engine
+    ///     strings. <see cref="Dispose" /> is a no-op for instances created with this constructor.
+    /// </summary>
+    /// <param name="existingGameId">An engine message <see cref="Guid" /> defined in SF6's localization tables.</param>
     public CustomMessage(Guid existingGameId)
     {
         Id = existingGameId;
@@ -45,10 +58,15 @@ public class CustomMessage : IDisposable
     }
 
     /// <summary>
-    ///     Gets the unique identifier for the custom message.
+    ///     Gets the <see cref="Guid" /> written into native <c>_MessageID</c>/<c>_GuideMessage</c> fields to reference
+    ///     this message during UI rendering.
     /// </summary>
     public Guid Id { get; init; }
 
+    /// <summary>
+    ///     Unregisters custom messages from the localization hook table and frees any cached globalized RE Engine
+    ///     strings; does nothing when wrapping a vanilla game GUID.
+    /// </summary>
     public void Dispose()
     {
         if (_isGameMessage) return;
@@ -56,8 +74,10 @@ public class CustomMessage : IDisposable
     }
 
     /// <summary>
-    ///     Optional readable factory alternative to passing 'true' in the constructor.
+    ///     Convenience factory equivalent to <c>new CustomMessage(key, isKey: true)</c> for JSON-backed translations.
     /// </summary>
+    /// <param name="key">The translation key, optionally prefixed with <c>"FileKey:TranslationKey"</c>.</param>
+    /// <returns>A newly registered <see cref="CustomMessage" /> populated from loaded translations.</returns>
     public static CustomMessage FromKey(string key)
     {
         return new CustomMessage(key, true);
@@ -69,26 +89,25 @@ public class CustomMessage : IDisposable
         MessageRegistry.RegisterCustomMessage(this);
     }
 
-
     /// <summary>
-    ///     Adds or updates a translation for a specific language.
+    ///     Sets or overwrites the text displayed for a specific <see cref="via.Language" /> before engine string
+    ///     materialization.
     /// </summary>
-    /// <param name="language">The target language.</param>
-    /// <param name="text">The translated text.</param>
-    /// <returns>The current <see cref="CustomMessage" /> instance for method chaining.</returns>
+    /// <param name="language">The SF6 display language slot to update.</param>
+    /// <param name="text">The localized string for <paramref name="language" />.</param>
+    /// <returns>The current <see cref="CustomMessage" /> for fluent chaining.</returns>
     public CustomMessage AddTranslation(via.Language language, string text)
     {
         _translations[(int)language] = text;
         return this;
     }
 
-
     /// <summary>
-    ///     Gets the memory address of the RE Engine-allocated managed string for the current system language,
-    ///     lazily initializing it if needed.
+    ///     Returns the RE Engine heap address of the cached globalized <c>System.String</c> matching the active
+    ///     <c>via.gui.GUISystem.MessageLanguage</c> (falling back to English if out of range), allocating and pinning
+    ///     it lazily on first lookup.
     /// </summary>
-    /// <remarks> The returned address points to an already globalized RE Engine string. </remarks>
-    /// <returns>The native memory address of the engine string.</returns>
+    /// <returns>The native object address suitable for returning from <c>app.helper.hLocalize.getMessage</c>.</returns>
     public ulong GetEngineStringAddress()
     {
         var langIndex = (int)via.gui.GUISystem.MessageLanguage;
@@ -112,7 +131,8 @@ public class CustomMessage : IDisposable
     }
 
     /// <summary>
-    ///     Clears and releases all cached RE Engine managed strings.
+    ///     Releases all cached globalized RE Engine <c>System.String</c> instances across every language slot without
+    ///     modifying the underlying C# translation array.
     /// </summary>
     public void ClearCachedEngineStrings()
     {

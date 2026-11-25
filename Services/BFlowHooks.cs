@@ -1,27 +1,28 @@
 namespace SF6_Plugin_Core.Services;
 
 /// <summary>
-///     Dispatches flow transition notifications to registered callbacks and game-mode handlers.
+///     Dispatches SF6 game flow state transitions (<see cref="app.bFlowManager.FlowWork.transition" />) to registered
+///     listeners.
 /// </summary>
 public static class BFlowHooks
 {
     /// <summary>
-    ///     Represents a callback invoked when a flow transition occurs.
+    ///     Callback invoked after <see cref="app.bFlowManager.FlowWork.transition" /> executes, as well as immediately
+    ///     upon registration if <see cref="GameSingletonManager.BFlowManager" /> is already initialized.
     /// </summary>
-    /// <param name="flowWork">The flow work being transitioned.</param>
+    /// <param name="flowWork">The active <see cref="app.bFlowManager.FlowWork" /> representing the current game flow.</param>
     public delegate void FlowTransitionDelegate(app.bFlowManager.FlowWork flowWork);
 
     private static event FlowTransitionDelegate? FlowTransitionCallback;
 
     /// <summary>
-    ///     Registers a callback to run for every flow transition. It also invokes the callback immediately with the current
-    ///     flow work if available.
+    ///     Subscribes a handler to every <see cref="app.bFlowManager.FlowWork.transition" /> call, and invokes it
+    ///     immediately with the active flow work if <see cref="GameSingletonManager.BFlowManager" /> is already ready.
     /// </summary>
-    /// <param name="flowTransitionDelegate">The callback to invoke with the current flow work.</param>
-    /// <remarks>
-    ///     The callback will be invoked every time, make sure it handles entering and exiting of the bFlow properly on
-    ///     its own.
-    /// </remarks>
+    /// <param name="flowTransitionDelegate">
+    ///     The callback to invoke on flow changes. Because it fires on every transition while registered, handlers must
+    ///     check the received <c>flowWork</c> themselves to distinguish entering vs. leaving a target flow.
+    /// </param>
     public static void RegisterFlowTransitionCallback(FlowTransitionDelegate flowTransitionDelegate)
     {
         FlowTransitionCallback += flowTransitionDelegate;
@@ -32,15 +33,19 @@ public static class BFlowHooks
     }
 
     /// <summary>
-    ///     Removes a callback previously registered through
-    ///     <see cref="RegisterFlowTransitionCallback(FlowTransitionDelegate)" />.
+    ///     Unsubscribes a handler previously registered with <see cref="RegisterFlowTransitionCallback" />.
     /// </summary>
-    /// <param name="flowTransitionDelegate">The callback to unregister.</param>
+    /// <param name="flowTransitionDelegate">The delegate instance to remove.</param>
     public static void UnregisterFlowTransitionCallback(FlowTransitionDelegate flowTransitionDelegate)
     {
         FlowTransitionCallback -= flowTransitionDelegate;
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <see cref="app.bFlowManager.FlowWork.transition" /> (not intended for direct calls
+    ///     by mods). Forwards the active <c>m_flow_work</c> to all subscribed callbacks.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked <c>transition</c> call (unused).</param>
     [MethodHook(typeof(app.bFlowManager.FlowWork), nameof(app.bFlowManager.FlowWork.transition), MethodHookType.Post)]
     public static void OnFlowTransition(ref ulong retval)
     {

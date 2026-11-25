@@ -77,10 +77,11 @@ public static class ShortcutManager
     }
 
     /// <summary>
-    ///     Queues the removal of a previously registered shortcut. The <c>onUnregister</c> callback is invoked
-    ///     immediately with the live save data.
+    ///     Queues removal of a previously registered shortcut. Captures live save values first and invokes
+    ///     <c>onUnregister</c> immediately before stripping the injected entry on the next rebuild.
     /// </summary>
-    /// <returns><c>true</c> if the shortcut was registered; otherwise <c>false</c>.</returns>
+    /// <param name="id">The registration handle returned by <see cref="RegisterShortcut" />.</param>
+    /// <returns><see langword="true" /> if the shortcut was registered; otherwise <see langword="false" />.</returns>
     public static bool UnregisterShortcut(Guid id)
     {
         ShortcutRegistration registration;
@@ -110,6 +111,11 @@ public static class ShortcutManager
 
     #region Rebuild
 
+    /// <summary>
+    ///     REFramework post-<c>LateUpdateBehavior</c> callback (not intended for direct calls by mods). Waits until
+    ///     <see cref="GameSingletonManager.ShortcutSetting" /> and its arrays are populated, then applies pending
+    ///     registrations/removals or re-applies if the game reset <c>_SettingUserData.Data</c> or <c>ItemDataList</c>.
+    /// </summary>
     [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
     public static void OnLateUpdateBehavior()
     {
@@ -429,6 +435,11 @@ public static class ShortcutManager
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <c>app.ShortcutSetting.Init</c> (not intended for direct calls by mods). Marks
+    ///     pending custom shortcuts dirty so they re-inject once initialization finishes.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.ShortcutSetting), "Init", MethodHookType.Post)]
     public static void OnShortcutInitPost(ref ulong retval)
     {
@@ -439,8 +450,11 @@ public static class ShortcutManager
     }
 
     /// <summary>
-    ///     Runs before training mode tears down.
+    ///     REFramework pre-hook on <c>app.training.TrainingManager.Save(System.Int32, System.Action)</c> (not
+    ///     intended for direct calls by mods). Restores vanilla shortcut data before training saves or tears down.
     /// </summary>
+    /// <param name="args">Raw VM argument span (unused).</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.training.TrainingManager),
         "Save(System.Int32, System.Action)", MethodHookType.Pre)]
     public static PreHookResult OnTrainingFlowMapEndPre(Span<ulong> args)
@@ -449,6 +463,12 @@ public static class ShortcutManager
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.ShortcutSetting.onShortcutTrigger</c> (not intended for direct calls by
+    ///     mods). Dispatches <c>onTrigger</c> callbacks registered for the triggered shortcut type.
+    /// </summary>
+    /// <param name="args">Raw VM argument span where <c>args[2]</c> is the integer <c>EShortcutType</c>.</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.ShortcutSetting), "onShortcutTrigger(app.ShortcutSettingData.EShortcutType)",
         MethodHookType.Pre)]
     public static PreHookResult OnShortcutTriggerPre(Span<ulong> args)
@@ -457,6 +477,12 @@ public static class ShortcutManager
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.ShortcutSetting.onShortcutUpdate</c> (not intended for direct calls by
+    ///     mods). Dispatches held/frame-update <c>onUpdate</c> callbacks registered for the shortcut type.
+    /// </summary>
+    /// <param name="args">Raw VM argument span where <c>args[2]</c> is the integer <c>EShortcutType</c>.</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.ShortcutSetting), "onShortcutUpdate(app.ShortcutSettingData.EShortcutType)",
         MethodHookType.Pre)]
     public static PreHookResult OnShortcutUpdatePre(Span<ulong> args)
@@ -465,6 +491,12 @@ public static class ShortcutManager
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.ShortcutSetting.onShortcutRelease</c> (not intended for direct calls by
+    ///     mods). Dispatches <c>onRelease</c> callbacks registered for the released shortcut type.
+    /// </summary>
+    /// <param name="args">Raw VM argument span where <c>args[2]</c> is the integer <c>EShortcutType</c>.</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.ShortcutSetting), "onShortcutRelease(app.ShortcutSettingData.EShortcutType)",
         MethodHookType.Pre)]
     public static PreHookResult OnShortcutReleasePre(Span<ulong> args)
@@ -614,24 +646,50 @@ public static class ShortcutManager
 
         // ---- app.ShortcutSettingData ----
 
+        /// <summary>Localized display name shown for this shortcut row in SF6's Shortcut Settings menu.</summary>
         public CustomMessage? ItemMessage { get; init; }
+
+        /// <summary>Localized help text shown in the bottom guide area when this shortcut is selected.</summary>
         public CustomMessage? GuideMessage { get; init; }
+
+        /// <summary>Fallback gamepad button applied when resetting shortcuts to defaults.</summary>
         public via.hid.GamePadButton DefaultButton { get; init; }
+
+        /// <summary>Fallback keyboard key applied when resetting shortcuts to defaults.</summary>
         public via.hid.KeyboardKey DefaultKey { get; init; }
+
+        /// <summary>Default state of the Function modifier requirement (e.g. requiring the Training Function button).</summary>
         public bool IsDefaultFunc { get; init; }
+
+        /// <summary>Whether keyboard bindings are permitted alongside gamepad bindings in the shortcut menu.</summary>
         public bool IsKeyInput { get; init; }
+
+        /// <summary>Whether the shortcut entry starts enabled when initialized or reset to defaults.</summary>
         public bool IsDefaultActive { get; init; }
 
         // ---- app.ShortcutSaveData.ShortcutSettingItemSaveData (updated live by the game) ----
 
+        /// <summary>Initial or saved gamepad binding; updated with the user's live binding in <c>onUnregister</c>.</summary>
         public via.hid.GamePadButton Button { get; init; }
+
+        /// <summary>Initial or saved keyboard binding; updated with the user's live key in <c>onUnregister</c>.</summary>
         public via.hid.KeyboardKey Key { get; init; }
+
+        /// <summary>Initial or saved Function-modifier toggle; updated with the live value in <c>onUnregister</c>.</summary>
         public bool IsFunc { get; init; }
+
+        /// <summary>Initial or saved enabled state; updated with the live value in <c>onUnregister</c>.</summary>
         public bool IsActive { get; init; }
 
         // Getter-only on the game side: never written, only filled when capturing the live data
+
+        /// <summary>Derived by SF6 during capture; never written on inject, reflects visibility when passed to <c>onUnregister</c>.</summary>
         public bool IsView { get; init; }
+
+        /// <summary>Derived by SF6 during capture; reflects whether a gamepad button binding is assigned.</summary>
         public bool IsButtonType { get; init; }
+
+        /// <summary>Derived by SF6 during capture; reflects whether a keyboard binding is assigned.</summary>
         public bool IsKeyType { get; init; }
     }
 

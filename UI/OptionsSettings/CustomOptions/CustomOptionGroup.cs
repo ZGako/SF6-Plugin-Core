@@ -1,13 +1,19 @@
-﻿using SF6_Plugin_Core.UI.OptionsSettings.Core;
+using SF6_Plugin_Core.UI.OptionsSettings.Core;
 
 namespace SF6_Plugin_Core.UI.OptionsSettings.CustomOptions;
 
+/// <summary>
+///     Abstract initializer for custom <see cref="app.Option.OptionGroupUnit" /> containers (such as submenu rows)
+///     whose child units are populated by <see cref="UICustomOptionsGroupNode" />.
+/// </summary>
 public abstract class CustomOptionGroup : CustomOptionBase, IUICustomOptionsGroupElementInitialization
 {
     // the only field here is the child list, which we actually handle in the RequestNode
 
+    /// <inheritdoc />
     protected override app.Option.SettingDataType SettingDataType { get; init; } = app.Option.SettingDataType.Group;
 
+    /// <inheritdoc />
     public override app.Option.OptionGroupUnit InitializeCustomElement(Guid functionNameId)
     {
         EnsureMessageRegistration();
@@ -51,6 +57,7 @@ public abstract class CustomOptionGroup : CustomOptionBase, IUICustomOptionsGrou
         return newOptionData;
     }
 
+    /// <inheritdoc />
     public override app.Option.OptionGroupUnit GetElementData()
     {
         return _customOptionDataMo?.As<app.Option.OptionGroupUnit>() ??

@@ -9,8 +9,15 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Requests;
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 /// <summary>
-///     Controls dynamic layout restructuring, element elimination, injection, and hooks for the training mode pause menu.
+///     Manages queued UI tree modifications (reorders, element removals/appends, field overrides, and runtime hook
+///     bindings) over SF6's Training Pause Menu (<c>app.training.TrainingManager._UIData._MenuData</c>).
 /// </summary>
+/// <remarks>
+///     Modifications queued via <see cref="RegisterModification" /> and <see cref="UnregisterModification" /> are
+///     applied atomically on <see cref="LateUpdateBehavior" /> via a post-order DFS rebuild. Before applying any
+///     mutations at a node, the manager restores the snapshotted vanilla arrays and fields so removals, reorders,
+///     and appends always operate against original 0-based game indices.
+/// </remarks>
 public static class PauseMenuManager
 {
     private static readonly Dictionary<IUIModificationRequest, List<int>>
@@ -206,8 +213,19 @@ public static class PauseMenuManager
     }
 
     /// <summary>
-    ///     Retrieves the original unmodified <see cref="app.training.TrainingMenuData" /> at the specified traversal path.
+    ///     Walks <paramref name="traversalPath" /> using snapshotted vanilla arrays wherever an ancestor node has already
+    ///     been modified, returning the original <see cref="app.training.TrainingMenuData" /> element at that path
+    ///     without mutating native objects.
     /// </summary>
+    /// <param name="traversalPath">
+    ///     0-based original index path from <c>_UIData._MenuData</c> (for example <c>[1, 3]</c> for Game Speed in the
+    ///     Environment tab).
+    /// </param>
+    /// <returns>
+    ///     The original <see cref="app.training.TrainingMenuData" /> at <paramref name="traversalPath" />, or
+    ///     <see langword="null" /> if <see cref="GameSingletonManager.TrainingManager" /> is unavailable or any index
+    ///     in the path cannot be resolved.
+    /// </returns>
     public static app.training.TrainingMenuData? GetOriginalElement(List<int> traversalPath)
     {
         lock (ModificationLock)
@@ -235,9 +253,18 @@ public static class PauseMenuManager
     }
 
     /// <summary>
-    ///     Retrieves the original unmodified <c>_ChildData</c> array for the element at the specified traversal path
-    ///     without cloning or mutating native <see cref="app.training.TrainingMenuData" /> instances.
+    ///     Returns the unmodified <see cref="app.training.TrainingMenuData_Array1D" /> (<c>_UIData._MenuData</c> when
+    ///     <paramref name="traversalPath" /> is empty, or <c>_ChildData</c> on the element at
+    ///     <paramref name="traversalPath" />), preferring snapshotted originals when the node was already rebuilt.
     /// </summary>
+    /// <param name="traversalPath">
+    ///     0-based original index path to the parent element whose children should be inspected, or empty <c>[]</c> for
+    ///     the root tab array.
+    /// </param>
+    /// <returns>
+    ///     The original child array, or <see langword="null" /> if Training Mode UI data is unavailable or any element
+    ///     along the path is missing.
+    /// </returns>
     public static app.training.TrainingMenuData_Array1D? GetOriginalChildData(List<int> traversalPath)
     {
         lock (ModificationLock)
@@ -273,6 +300,11 @@ public static class PauseMenuManager
         }
     }
 
+    /// <summary>
+    ///     REFramework post-<c>LateUpdateBehavior</c> callback (not intended for direct calls by mods). Flushes any
+    ///     dirty Training Pause Menu modifications via <c>RebuildUI()</c> when <c>_UIData._MenuData</c> is live, or
+    ///     releases all cached registrations, snapshots, and custom function types once Training Mode exits.
+    /// </summary>
     [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
     public static void OnLateUpdateBehavior()
     {
@@ -531,6 +563,28 @@ public static class PauseMenuManager
         FlushPendingDisposals();
     }
 
+    /// <summary>
+    ///     Queues a modification request at <paramref name="traversalPath" /> and marks the Training Pause Menu dirty
+    ///     for rebuild on the next <see cref="LateUpdateBehavior" />.
+    /// </summary>
+    /// <remarks>
+    ///     Path indices always reference the <b>original unmodified</b> vanilla hierarchy (<c>[]</c> targets the root
+    ///     tab array <c>_UIData._MenuData</c>). Snapshots the target node's original fields and <c>_ChildData</c> on
+    ///     first touch, claims <see cref="ExclusiveModificationRequest" /> instances, and logs a warning without
+    ///     throwing if a conflicting request of the same kind already occupies the node.
+    /// </remarks>
+    /// <param name="traversalPath">0-based original index path from <c>_UIData._MenuData</c>, or <c>[]</c> for root tabs.</param>
+    /// <param name="modificationRequest">
+    ///     A <see cref="ReorderRequest" />, <see cref="PauseMenuAppendElementsRequest" />,
+    ///     <see cref="RemoveElementsRequest" />, <see cref="FieldOverrideRequest" /> (non-root only), or
+    ///     <see cref="IUIHookRequest" /> (non-root only).
+    /// </param>
+    /// <exception cref="InvalidCastException">Thrown when an ancestor array pointer along <paramref name="traversalPath" /> is invalid.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown if <c>TrainingManager</c> is uninitialized, any element along <paramref name="traversalPath" /> is
+    ///     missing, <paramref name="modificationRequest" /> is already claimed, or a non-root-only request targets
+    ///     <c>[]</c>.
+    /// </exception>
     public static void RegisterModification(List<int> traversalPath, IUIModificationRequest modificationRequest)
     {
         lock (ModificationLock)
@@ -605,6 +659,12 @@ public static class PauseMenuManager
         }
     }
 
+    /// <summary>
+    ///     Queues removal of a previously registered modification request, clears its attached runtime hooks immediately
+    ///     or schedules native resource disposal after the next <see cref="LateUpdateBehavior" /> rebuild restores the
+    ///     vanilla UI data.
+    /// </summary>
+    /// <param name="modificationRequest">The request instance originally passed to <see cref="RegisterModification" />.</param>
     public static void UnregisterModification(IUIModificationRequest modificationRequest)
     {
         lock (ModificationLock)

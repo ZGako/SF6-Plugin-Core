@@ -1,17 +1,14 @@
 namespace SF6_Plugin_Core.Memory;
 
 /// <summary>
-///     Caches and reuses REFramework RE Engine strings (<see cref="SystemString" />) to avoid repeated unmanaged
-///     allocations.
+///     Thread-safe cache for globalized RE Engine <see cref="SystemString" /> instances, eliminating repeated
+///     unmanaged string allocations across frame updates.
 /// </summary>
 /// <remarks>
-///     Allocating RE Engine strings in unmanaged memory via <see cref="VM.CreateString" /> is expensive.
-///     Pooling these instances mitigates allocation overhead and reduces engine garbage collector churn.
-///     <para>
-///         This pool is best suited for a bounded, recurring set of strings (e.g., UI labels, state identifiers,
-///         or lookup keys) that are frequently passed into engine calls. It should not be used for arbitrarily generated
-///         or unbounded strings, as pooled instances remain globalized until explicitly cleared or disposed.
-///     </para>
+///     Allocating strings on the RE Engine managed heap via <c>VM.CreateString</c> is relatively costly and
+///     leaves objects eligible for engine GC unless globalized. Keep usage scoped to a bounded set of recurring UI
+///     labels (such as formatted spinner values or custom input guide markup), because pooled strings remain pinned
+///     via <c>Globalize()</c> until <see cref="Clear" /> or <see cref="Dispose" /> runs.
 /// </remarks>
 public sealed class ManagedStringPool : IDisposable
 {
@@ -19,7 +16,7 @@ public sealed class ManagedStringPool : IDisposable
     private readonly Dictionary<string, SystemString> _pool = [];
 
     /// <summary>
-    ///     Disposes the pool and frees all pooled RE Engine strings by invoking <see cref="Clear" />.
+    ///     Releases all globalized RE Engine strings held by this pool and clears the cache.
     /// </summary>
     public void Dispose()
     {
@@ -27,16 +24,17 @@ public sealed class ManagedStringPool : IDisposable
     }
 
     /// <summary>
-    ///     Retrieves a cached <see cref="SystemString" /> for the specified text, or allocates, globalizes, and pools a new RE
-    ///     Engine string.
+    ///     Returns a cached globalized <see cref="SystemString" /> for <paramref name="text" />, or allocates,
+    ///     globalizes, and caches a new instance on first lookup.
     /// </summary>
-    /// <remarks>
-    ///     Newly allocated strings are globalized to prevent the RE Engine garbage collector from prematurely
-    ///     reclaiming them across frames while they are retained by the pool.
-    /// </remarks>
-    /// <param name="text">The string text to retrieve from cache or allocate in engine memory.</param>
-    /// <returns>A persistent, globalized <see cref="SystemString" /> instance suitable for passing to the RE Engine.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when REFramework fails to allocate the string in the RE Engine.</exception>
+    /// <param name="text">The managed C# string whose RE Engine representation should be retrieved or allocated.</param>
+    /// <returns>
+    ///     A globalized <see cref="SystemString" /> safe to pass into RE Engine calls across frames until the pool is
+    ///     cleared.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when <c>VM.CreateString</c> fails to allocate the string in the RE Engine VM.
+    /// </exception>
     public SystemString GetOrCreate(string text)
     {
         lock (_lock)

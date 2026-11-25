@@ -1,13 +1,17 @@
-﻿using app;
+using app;
 using SF6_Plugin_Core.UI.InjectionShared;
 
 namespace SF6_Plugin_Core.UI.OptionsSettings.CustomOptions;
 
 /// <summary>
-///     Abstract class meant to be used as the base of your collections. To initialize use the inherited classes
+///     Abstract request node for custom Options menu entries. Instantiate <see cref="UICustomOptionsGroupNode" />
+///     for submenu containers or <see cref="UICustomOptionsValueNode" /> for interactive settings rows.
 /// </summary>
-/// <param name="functionId"></param>
-/// <param name="customInitializer"></param>
+/// <param name="functionId">
+///     Stable <see cref="Guid" /> mapped to a custom integer <see cref="Option.GroupType" /> or
+///     <see cref="Option.ValueType" /> during rebuilds.
+/// </param>
+/// <param name="customInitializer">Element initializer backing this Options node.</param>
 public abstract class UICustomOptionRequestNode(
     Guid functionId,
     IUICustomOptionsElementInitialization customInitializer) :
@@ -16,6 +20,12 @@ public abstract class UICustomOptionRequestNode(
 {
 }
 
+/// <summary>
+///     Request node representing an <see cref="Option.OptionGroupUnit" /> submenu or button entry, recursively
+///     populating <c>ChildUnits</c> and binding attached hooks on rebuild.
+/// </summary>
+/// <param name="functionId">Stable <see cref="Guid" /> mapped to the group's runtime <see cref="Option.GroupType" />.</param>
+/// <param name="customInitializer">Group initializer (such as <see cref="GroupRowButtonInitializer" />).</param>
 public class UICustomOptionsGroupNode(
     Guid functionId,
     IUICustomOptionsGroupElementInitialization customInitializer) :
@@ -40,6 +50,12 @@ public class UICustomOptionsGroupNode(
     }
 }
 
+/// <summary>
+///     Request node representing an <see cref="Option.OptionValueUnit" /> leaf setting (sliders, spinners, toggles,
+///     or static labels) without nested child units.
+/// </summary>
+/// <param name="functionId">Stable <see cref="Guid" /> mapped to the value row's runtime <see cref="Option.ValueType" />.</param>
+/// <param name="customInitializer">Value initializer (such as <see cref="SliderOptionInitializer" /> or <see cref="SpinBoxOptionInitializer" />).</param>
 public class UICustomOptionsValueNode(
     Guid functionId,
     IUICustomOptionsValueElementInitialization customInitializer) :

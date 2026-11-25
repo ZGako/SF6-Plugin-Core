@@ -3,7 +3,8 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 namespace SF6_Plugin_Core.Services;
 
 /// <summary>
-///     Exposes the game's managed singletons and tracks their lifecycle readiness for mod integrations.
+///     Tracks readiness and teardown lifecycles of SF6 managed singletons and dispatches mod initialization/cleanup
+///     callbacks on the main thread.
 /// </summary>
 public static class GameSingletonManager
 {
@@ -17,7 +18,9 @@ public static class GameSingletonManager
     // Publicly accessible singleton instances
 
     /// <summary>
-    ///     Gets the current <see cref="TrainingManager" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets the active <see cref="app.training.TrainingManager" /> once <c>IsInit</c> is true and
+    ///     <c>_UIData._MenuData</c> is populated, or <see langword="null" /> outside Training Mode or while teardown is
+    ///     in progress.
     /// </summary>
     public static app.training.TrainingManager? TrainingManager
     {
@@ -35,7 +38,8 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Gets the current <see cref="UIAgentManager" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets the game's <see cref="app.UIAgentManager" /> singleton, or <see langword="null" /> before REFramework
+    ///     can resolve it.
     /// </summary>
     public static app.UIAgentManager? UIAgentManager
     {
@@ -44,7 +48,8 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Gets the current <see cref="UIPrefabManager" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets the game's <see cref="app.UIPrefabManager" /> singleton, or <see langword="null" /> before REFramework
+    ///     can resolve it.
     /// </summary>
     public static app.UIPrefabManager? UIPrefabManager
     {
@@ -53,7 +58,8 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Gets the current <see cref="NetworkManager" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets the game's <see cref="app.network.NetworkManager" /> singleton, or <see langword="null" /> before
+    ///     REFramework can resolve it.
     /// </summary>
     public static app.network.NetworkManager? NetworkManager
     {
@@ -62,7 +68,8 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Gets the current <see cref="BFlowManager" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets the game's <see cref="app.bFlowManager" /> singleton, or <see langword="null" /> before REFramework can
+    ///     resolve it.
     /// </summary>
     public static app.bFlowManager? BFlowManager
     {
@@ -71,7 +78,8 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Gets the current <see cref="ResourceManager" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets RE Engine's native <see cref="REFrameworkNET.ResourceManager" /> wrapper, or <see langword="null" />
+    ///     before initialization.
     /// </summary>
     public static ResourceManager? ResourceManager
     {
@@ -80,7 +88,8 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Gets the current <see cref="GuiManager" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets the game's <see cref="app.GuiManager" /> singleton, or <see langword="null" /> before REFramework can
+    ///     resolve it.
     /// </summary>
     public static app.GuiManager? GuiManager
     {
@@ -89,7 +98,8 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Gets the current <see cref="OptionManager" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets the game's <see cref="app.OptionManager" /> singleton once <c>mInitEndFlag</c> is true and
+    ///     <c>UnitLists</c> is non-null, or <see langword="null" /> before options data has loaded.
     /// </summary>
     public static app.OptionManager? OptionManager
     {
@@ -105,7 +115,9 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Gets the current <see cref="ShortcutSetting" /> instance, or <see langword="null" /> when it is unavailable.
+    ///     Gets the game's <see cref="app.ShortcutSetting" /> singleton once <c>IsLoaded</c> is true, or
+    ///     <see langword="null" /> before shortcut settings are loaded or while <c>app.ShortcutSetting.Init</c> resets
+    ///     them.
     /// </summary>
     public static app.ShortcutSetting? ShortcutSetting
     {
@@ -120,6 +132,10 @@ public static class GameSingletonManager
         private set;
     }
 
+    /// <summary>
+    ///     REFramework pre-update callback (not intended for direct calls by mods). Polls unready singletons once per
+    ///     frame and fires queued <c>onReady</c> callbacks the first frame each becomes available.
+    /// </summary>
     [Callback(typeof(UpdateBehavior), CallbackType.Pre)]
     public static void OnUpdateBehaviorCallback()
     {
@@ -192,20 +208,26 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="TrainingManager" /> becomes available.
+    ///     Subscribes to the multi-session lifecycle of <see cref="TrainingManager" /> (entering and exiting Training
+    ///     Mode). Invokes <paramref name="onReady" /> immediately if Training Mode is already active, and keeps both
+    ///     callbacks registered across subsequent Training Mode entries/exits.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
-    /// <param name="onRelease">The action to invoke when the singleton is released, if provided.</param>
+    /// <param name="onReady">Invoked once <c>TrainingManager.IsInit</c> and <c>_UIData._MenuData</c> are ready.</param>
+    /// <param name="onRelease">
+    ///     Optional cleanup invoked before <see cref="PauseMenuManager" /> and <see cref="ShortcutManager" /> clear
+    ///     all remaining hooks on Training Mode exit or destruction.
+    /// </param>
     public static void RegisterTrainingManager(Action onReady, Action? onRelease = null)
     {
         RegisterSingleton(GameSingletonTypes.TrainingManager, true, onReady, onRelease);
     }
 
     /// <summary>
-    ///     Removes a callback previously registered through <see cref="RegisterTrainingManager(Action, Action?)" />.
+    ///     Unsubscribes callbacks previously added via <see cref="RegisterTrainingManager" /> so hot-unloading a mod
+    ///     does not leave stale delegate references in Core.
     /// </summary>
-    /// <param name="onReady">The ready callback to remove.</param>
-    /// <param name="onRelease">The release callback to remove, if provided.</param>
+    /// <param name="onReady">The ready delegate passed to <see cref="RegisterTrainingManager" />.</param>
+    /// <param name="onRelease">The release delegate passed to <see cref="RegisterTrainingManager" />, if any.</param>
     public static void UnregisterTrainingManager(Action onReady, Action? onRelease = null)
     {
         if (RegisteredSingletons.TryGetValue(GameSingletonTypes.TrainingManager, out var hooks))
@@ -277,6 +299,12 @@ public static class GameSingletonManager
         }
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.training.TrainingManager.Release</c> (not intended for direct calls by mods).
+    ///     Tears down active Training Mode mod state, pause-menu hooks, and shortcuts before release proceeds.
+    /// </summary>
+    /// <param name="args">Raw VM argument span (unused).</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" /> so the engine finishes releasing <c>TrainingManager</c>.</returns>
     [MethodHook(typeof(app.training.TrainingManager),
         "Release", MethodHookType.Pre)]
     public static PreHookResult OnTrainingManagerReleasePre(Span<ulong> args)
@@ -285,6 +313,11 @@ public static class GameSingletonManager
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <c>app.training.TrainingManager.Release</c> (not intended for direct calls by mods).
+    ///     Clears the in-flight release guard so future Training Mode sessions can become ready again.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.training.TrainingManager),
         "Release", MethodHookType.Post)]
     public static void OnTrainingManagerReleasePost(ref ulong retval)
@@ -292,6 +325,12 @@ public static class GameSingletonManager
         _isReleasingTrainingManager = false;
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.training.TrainingManager.doOnDestroy</c> (not intended for direct calls by
+    ///     mods). Acts as a fallback teardown path if <c>TrainingManager</c> is destroyed without <c>Release</c> firing.
+    /// </summary>
+    /// <param name="args">Raw VM argument span (unused).</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.training.TrainingManager),
         "doOnDestroy", MethodHookType.Pre)]
     public static PreHookResult OnTrainingManagerDestroyPre(Span<ulong> args)
@@ -300,6 +339,11 @@ public static class GameSingletonManager
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <c>app.training.TrainingManager.doOnDestroy</c> (not intended for direct calls by
+    ///     mods). Clears the in-flight release guard after destruction finishes.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.training.TrainingManager),
         "doOnDestroy", MethodHookType.Post)]
     public static void OnTrainingManagerDestroyPost(ref ulong retval)
@@ -308,72 +352,88 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="UIAgentManager" /> becomes available.
+    ///     Registers a one-shot callback invoked when <see cref="UIAgentManager" /> first becomes non-null (or
+    ///     immediately if already initialized); cleared after firing once.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    /// <param name="onReady">One-time initialization callback.</param>
     public static void RegisterUIAgentManager(Action onReady)
     {
         RegisterSingleton(GameSingletonTypes.UIAgentManager, false, onReady, null);
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="UIPrefabManager" /> becomes available.
+    ///     Registers a one-shot callback invoked when <see cref="UIPrefabManager" /> first becomes non-null (or
+    ///     immediately if already initialized); cleared after firing once.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    /// <param name="onReady">One-time initialization callback.</param>
     public static void RegisterUIPrefabManager(Action onReady)
     {
         RegisterSingleton(GameSingletonTypes.UIPrefabManager, false, onReady, null);
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="NetworkManager" /> becomes available.
+    ///     Registers a one-shot callback invoked when <see cref="NetworkManager" /> first becomes non-null (or
+    ///     immediately if already initialized); cleared after firing once.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    /// <param name="onReady">One-time initialization callback.</param>
     public static void RegisterNetworkManager(Action onReady)
     {
         RegisterSingleton(GameSingletonTypes.NetworkManager, false, onReady, null);
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="BFlowManager" /> becomes available.
+    ///     Registers a one-shot callback invoked when <see cref="BFlowManager" /> first becomes non-null (or
+    ///     immediately if already initialized); cleared after firing once.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    /// <param name="onReady">One-time initialization callback.</param>
     public static void RegisterBFlowManager(Action onReady)
     {
         RegisterSingleton(GameSingletonTypes.BattleFlowManager, false, onReady, null);
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="ResourceManager" /> becomes available.
+    ///     Registers a one-shot callback invoked when <see cref="ResourceManager" /> first becomes non-null (or
+    ///     immediately if already initialized); cleared after firing once.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    /// <param name="onReady">One-time initialization callback.</param>
     public static void RegisterResourceManager(Action onReady)
     {
         RegisterSingleton(GameSingletonTypes.ResourceManager, false, onReady, null);
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="GuiManager" /> becomes available.
+    ///     Registers a one-shot callback invoked when <see cref="GuiManager" /> first becomes non-null (or
+    ///     immediately if already initialized); cleared after firing once.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    /// <param name="onReady">One-time initialization callback.</param>
     public static void RegisterGuiManager(Action onReady)
     {
         RegisterSingleton(GameSingletonTypes.GuiManager, false, onReady, null);
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="OptionManager" /> becomes available.
+    ///     Subscribes to <see cref="OptionManager" /> readiness and save-data reload events. Because SF6 reloads saved
+    ///     options via <c>OptionManager.LoadValueData</c>, both delegates remain retained so mods can tear down and
+    ///     re-apply customizations whenever save data overwrites <c>UnitLists</c>.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    /// <param name="onReady">
+    ///     Invoked when <c>OptionManager.mInitEndFlag</c> and <c>UnitLists</c> first become valid (or immediately if
+    ///     already ready), and again right after <paramref name="onLoadOverwrite" /> during <c>LoadValueData</c>.
+    /// </param>
     /// <param name="onLoadOverwrite">
-    ///     Action to invoke to unload the settings (after which the onReady function will be called
-    ///     again)
+    ///     Invoked after <c>app.OptionManager.LoadValueData</c> completes so stale option UI hooks/requests can be
+    ///     unloaded before <paramref name="onReady" /> re-registers them.
     /// </param>
     public static void RegisterOptionManager(Action onReady, Action onLoadOverwrite)
     {
         RegisterSingleton(GameSingletonTypes.OptionManager, true, onReady, onLoadOverwrite);
     }
 
+    /// <summary>
+    ///     Unsubscribes delegates previously registered with <see cref="RegisterOptionManager" />.
+    /// </summary>
+    /// <param name="onReady">The ready delegate to remove.</param>
+    /// <param name="onLoadOverwrite">The overwrite/reload delegate to remove, or <see langword="null" />.</param>
     public static void UnregisterOptionManager(Action onReady, Action? onLoadOverwrite = null)
     {
         if (RegisteredSingletons.TryGetValue(GameSingletonTypes.OptionManager, out var hooks))
@@ -383,6 +443,12 @@ public static class GameSingletonManager
         }
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <c>app.OptionManager.LoadValueData(app.Option.OptionSaveData)</c> (not intended for
+    ///     direct calls by mods). Runs all option overwrite cleanup delegates followed by <c>onReady</c> callbacks so
+    ///     custom options stay intact when save data reloads.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.OptionManager), "LoadValueData(app.Option.OptionSaveData)", MethodHookType.Post)]
     public static void OnLoadValueData(ref ulong retval)
     {
@@ -410,20 +476,33 @@ public static class GameSingletonManager
     }
 
     /// <summary>
-    ///     Registers a callback to run when <see cref="ShortcutSetting" /> becomes available.
+    ///     Registers a one-shot callback invoked when <see cref="ShortcutSetting" /> becomes loaded (or immediately if
+    ///     already loaded); cleared after firing once. Note that <c>ShortcutSetting.Init</c> invalidates the cached
+    ///     singleton and clears <see cref="ShortcutManager" /> shortcuts on re-init.
     /// </summary>
-    /// <param name="onReady">The action to invoke when the singleton becomes available.</param>
+    /// <param name="onReady">One-time initialization callback.</param>
     public static void RegisterShortcutSetting(Action onReady)
     {
         RegisterSingleton(GameSingletonTypes.ShortcutSetting, false, onReady, null);
     }
 
+    /// <summary>
+    ///     Unsubscribes a pending <see cref="RegisterShortcutSetting" /> callback before it has fired.
+    /// </summary>
+    /// <param name="onReady">The ready delegate to remove.</param>
     public static void UnregisterShortcutSetting(Action onReady)
     {
         if (RegisteredSingletons.TryGetValue(GameSingletonTypes.ShortcutSetting, out var hooks))
             hooks.OnReady -= onReady;
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.ShortcutSetting.Init</c> (not intended for direct calls by mods). Clears
+    ///     injected shortcuts and resets cached <see cref="ShortcutSetting" /> readiness so the singleton re-evaluates
+    ///     once loading finishes.
+    /// </summary>
+    /// <param name="args">Raw VM argument span (unused).</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.ShortcutSetting), "Init", MethodHookType.Pre)]
     public static PreHookResult OnShortcutInitReleasePre(Span<ulong> args)
     {

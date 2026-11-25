@@ -1,15 +1,25 @@
 namespace SF6_Plugin_Core.Memory;
 
+/// <summary>
+///     Provides type-checked RE Engine memory marshaling, field copying, GUID field writes, and closed generic
+///     collection instantiation over REFramework <see cref="ManagedObject" /> pointers.
+/// </summary>
 public static class MemoryHelpers
 {
     /// <summary>
-    ///     Attempts to retrieve a managed proxy of type T from a given memory address associated with a ManagedObject.
+    ///     Resolves a raw native/VM pointer address to a <typeparamref name="T" /> proxy after verifying TDB
+    ///     inheritance compatibility.
     /// </summary>
-    /// <typeparam name="T"></typeparam>
-    /// <param name="address"></param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="InvalidCastException"></exception>
+    /// <typeparam name="T">The expected REFramework-generated interface or proxy class (must expose <c>REFType</c>).</typeparam>
+    /// <param name="address">The raw unmanaged address of an RE Engine managed object (for example, a <c>[MethodHook]</c> argument slot).</param>
+    /// <returns>A typed proxy wrapping the <see cref="ManagedObject" /> at <paramref name="address" />.</returns>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="address" /> does not resolve to a valid RE Engine <see cref="ManagedObject" />.
+    /// </exception>
+    /// <exception cref="InvalidCastException">
+    ///     Thrown when the runtime TDB type at <paramref name="address" /> does not derive from <typeparamref name="T" />,
+    ///     or when <see cref="ManagedObject.As{T}" /> fails to construct a proxy.
+    /// </exception>
     public static T GetAddressAs<T>(ulong address) where T : class
     {
         var managedObj = ManagedObject.ToManagedObject(address)
@@ -33,14 +43,17 @@ public static class MemoryHelpers
     }
 
     /// <summary>
-    ///     Attempts to retrieve a managed proxy of type T from a given object, which is expected to be a ManagedObject.
+    ///     Casts an object (such as the return value of a dynamic VM <c>Call</c>) to a <typeparamref name="T" /> proxy
+    ///     after validating its TDB type hierarchy.
     /// </summary>
-    /// <typeparam name="T"></typeparam>
-    /// <param name="obj"></param>
-    /// <param name="exceptionMessage">Message to display in case of an exception.</param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="InvalidCastException"></exception>
+    /// <typeparam name="T">The expected REFramework-generated interface or proxy class (must expose <c>REFType</c>).</typeparam>
+    /// <param name="obj">A boxed <see cref="ManagedObject" /> obtained from REFramework APIs.</param>
+    /// <param name="exceptionMessage">Optional custom message used when throwing on a null or incompatible object.</param>
+    /// <returns>A typed proxy wrapping <paramref name="obj" />.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="obj" /> is <see langword="null" /> or not a <see cref="ManagedObject" />.</exception>
+    /// <exception cref="InvalidCastException">
+    ///     Thrown when the object's TDB type does not derive from <typeparamref name="T" />, or proxy creation fails.
+    /// </exception>
     public static T GetObjectAs<T>(this object obj, string? exceptionMessage = null) where T : class
     {
         var managedObj = obj as ManagedObject ??
@@ -77,11 +90,17 @@ public static class MemoryHelpers
     }
 
     /// <summary>
-    ///     Copies all non-static fields from a source ManagedObject to a target ManagedObject of the same type.
+    ///     Shallow-copies all non-static TDB fields defined on <paramref name="typeDef" /> from
+    ///     <paramref name="source" /> to <paramref name="target" />, no-oping when both point to zero or identical
+    ///     addresses.
     /// </summary>
-    /// <param name="target">The target ManagedObject to copy fields to.</param>
-    /// <param name="source">The source ManagedObject to copy fields from.</param>
-    /// <param name="typeDef">The TypeDefinition of the objects.</param>
+    /// <remarks>
+    ///     Value-type fields are blitted via raw memory copy using TDB primitive/<c>ValueTypeSize</c> metadata, whereas
+    ///     reference fields copy only the pointer (clearing to <see langword="null" /> if the source reference is null).
+    /// </remarks>
+    /// <param name="target">The destination RE Engine instance receiving the copied field values.</param>
+    /// <param name="source">The source RE Engine instance whose fields are read.</param>
+    /// <param name="typeDef">The TDB <see cref="TypeDefinition" /> enumerating the fields to copy.</param>
     public static void CopyFieldsFrom(this ManagedObject target, ManagedObject source, TypeDefinition typeDef)
     {
         var sourceAddr = source.GetAddress();
@@ -135,11 +154,16 @@ public static class MemoryHelpers
     }
 
     /// <summary>
-    ///     Sets a Guid value to a specified field of a ManagedObject.
+    ///     Writes a 16-byte <see cref="Guid" /> directly into a named field on <paramref name="obj" />.
     /// </summary>
-    /// <param name="obj">The ManagedObject to set the Guid on.</param>
-    /// <param name="fieldName">The name of the field to set.</param>
-    /// <param name="guid">The Guid value to set.</param>
+    /// <remarks>
+    ///     Used to populate engine <c>System.Guid</c> fields (such as <c>_MessageID</c> on UI data objects) without
+    ///     allocating an intermediate RE Engine boxed <c>System.Guid</c>. Logs a warning and returns if the object,
+    ///     field, or raw field address is invalid.
+    /// </remarks>
+    /// <param name="obj">The target <see cref="ManagedObject" /> containing the <see cref="Guid" /> field.</param>
+    /// <param name="fieldName">The exact TDB field name on <paramref name="obj" />.</param>
+    /// <param name="guid">The <see cref="Guid" /> value whose raw bytes are copied into engine memory.</param>
     public static void SetGuidField(this ManagedObject obj, string fieldName, Guid guid)
     {
         var addr = obj.GetAddress();
@@ -165,8 +189,18 @@ public static class MemoryHelpers
     }
 
     /// <summary>
-    ///     Creates a new instance of System.Collections.Generic.List<T> in the RE Engine VM.
+    ///     Instantiates a closed <c>System.Collections.Generic.List&lt;T&gt;</c> on the RE Engine VM via cached
+    ///     <c>MakeGenericType</c> and <c>Activator.CreateInstance</c> metadata.
     /// </summary>
+    /// <typeparam name="T">The RE Engine element type (for example <see cref="app.Option.OptionUnitBase" />).</typeparam>
+    /// <param name="globalize">
+    ///     When <see langword="true" /> (the default), calls <c>Globalize()</c> on the returned list; the caller is
+    ///     then responsible for calling <c>ReleaseIfGlobalized()</c> when discarding it.
+    /// </param>
+    /// <returns>
+    ///     The newly created VM list as a <see cref="ManagedObject" />, or <see langword="null" /> if reflection metadata
+    ///     resolution or instantiation failed.
+    /// </returns>
     public static ManagedObject? CreateGenericList<T>(bool globalize = true) where T : class
     {
         var closedListRuntimeType = ListTypeCache<T>.ClosedListRuntimeType;
@@ -255,7 +289,7 @@ public static class MemoryHelpers
     }
 
     /// <summary>
-    ///     Caches global reflection metadata needed to construct generic List<T> instances.
+    ///     Caches global reflection metadata needed to construct generic <c>List&lt;T&gt;</c> instances.
     /// </summary>
     private static class ListReflectionCache
     {
@@ -288,7 +322,7 @@ public static class MemoryHelpers
     }
 
     /// <summary>
-    ///     Caches the closed System.RuntimeType for List<T> using the exact MakeGenericType method.
+    ///     Caches the closed System.RuntimeType for <c>List&lt;T&gt;</c> using the exact MakeGenericType method.
     /// </summary>
     private static class ListTypeCache<T> where T : class
     {

@@ -5,8 +5,17 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
+/// <summary>
+///     Injects floating inline button-prompt glyphs (<c>p_custom_guide</c>) onto secondary-list Training Pause Menu
+///     rows (such as sub-options inside a spinner) by cloning SF6's <c>p_InputGuide_2_s</c> GUI element and
+///     mirroring row slide-in animations across <see cref="LateUpdateBehavior" />.
+/// </summary>
 public static class CustomInputGuideHook
 {
+    /// <summary>
+    ///     Default local X coordinate (in RE Engine GUI units) where injected button-prompt glyphs are positioned
+    ///     relative to the focused secondary-list row.
+    /// </summary>
     public const float DefaultCustomTextBaseX = 560f;
     private const int AnimationFrameCount = 20;
 
@@ -42,6 +51,12 @@ public static class CustomInputGuideHook
         CustomSecondaryListEntries.TryRemove(id, out var _);
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <see cref="app.training.UIFlowTrainingMenu.Param.UpdateSecondaryList" /> (not
+    ///     intended for direct calls by mods). Hides any previously shown <c>p_custom_guide</c> panel and displays
+    ///     the registered button-prompt tags when the newly focused item matches a custom entry.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.training.UIFlowTrainingMenu.Param), "UpdateSecondaryList", MethodHookType.Post)]
     public static void OnUpdateSecondaryListPost(ref ulong retval)
     {
@@ -215,6 +230,11 @@ public static class CustomInputGuideHook
         }
     }
 
+    /// <summary>
+    ///     REFramework post-<c>LateUpdateBehavior</c> callback (not intended for direct calls by mods). Synchronizes the
+    ///     injected prompt panel's X offset with the row's slide-in animation for 20 frames and hides it once
+    ///     Training Mode exits.
+    /// </summary>
     [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
     public static void OnLateUpdateBehavior()
     {

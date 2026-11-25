@@ -15,10 +15,24 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core;
 
+/// <summary>
+///     Coordinates shutdown teardown across all <c>SF6_Plugin_Core</c> subsystems when REFramework unloads
+///     the shared core plugin assembly.
+/// </summary>
 public static class CoreLifecycle
 {
+    /// <summary>
+    ///     Raised at the start of core plugin teardown, before UI modifications, singletons, hooks, and localized
+    ///     messages are cleared. Consumer plugins should subscribe to detach their callbacks and save state so no
+    ///     references into consumer assemblies remain in <c>00_SF6PluginCore</c>.
+    /// </summary>
     public static event Action? OnCoreUnloading;
 
+    /// <summary>
+    ///     REFramework plugin exit callback (not intended for direct calls by mods).
+    ///     Notifies <see cref="OnCoreUnloading" /> subscribers, restores modified Training Pause Menu and Options
+    ///     UI data if still live, and tears down shortcuts, singleton caches, flow/HUD hooks, and localization tables.
+    /// </summary>
     [PluginExitPoint]
     public static void PluginExitPoint()
     {

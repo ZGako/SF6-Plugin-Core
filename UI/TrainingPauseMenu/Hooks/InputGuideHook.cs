@@ -3,9 +3,18 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
+/// <summary>
+///     Intercepts <c>app.training.TrainingManager.GetGuideData</c> so mods can append or customize bottom-bar input
+///     guide entries shown when focusing a vanilla or custom Training Pause Menu item.
+/// </summary>
 public static class InputGuideHook
 {
-    // delegate type for pause menu input guide data modification
+    /// <summary>
+    ///     Callback invoked after SF6 populates the bottom input guide lists for a registered item, allowing mods to
+    ///     add <see cref="app.InputGuideData" /> items or custom guide strings.
+    /// </summary>
+    /// <param name="outInputGuideDataList">Engine list of structured input-prompt descriptors rendered in the footer bar.</param>
+    /// <param name="outStringList">Parallel engine string list populated alongside <paramref name="outInputGuideDataList" />.</param>
     public delegate void InputGuideDelegate(
         ref REFrameworkNET.Collections.IList<app.InputGuideData> outInputGuideDataList,
         ref REFrameworkNET.Collections.IList<string> outStringList);
@@ -34,6 +43,16 @@ public static class InputGuideHook
     }
 
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.training.TrainingManager.GetGuideData</c> (not intended for direct calls by
+    ///     mods). Pushes the target <c>FuncType</c> and output list pointer addresses onto a thread-local stack if a
+    ///     custom guide delegate is registered for the item.
+    /// </summary>
+    /// <param name="args">
+    ///     Raw VM argument span: <c>args[2]</c> is <see cref="app.training.TrainingMenuData" />, <c>args[3]</c> is the
+    ///     <c>List&lt;InputGuideData&gt;</c> ref/out slot, and <c>args[4]</c> is the <c>List&lt;string&gt;</c> slot.
+    /// </param>
+    /// <returns>Always <see cref="PreHookResult.Continue" /> so vanilla guide items are populated first.</returns>
     [MethodHook(typeof(app.training.TrainingManager),
         "GetGuideData(app.training.TrainingMenuData, System.Collections.Generic.List`1<app.InputGuideData>, System.Collections.Generic.List`1<System.String>)",
         MethodHookType.Pre)]
@@ -64,6 +83,11 @@ public static class InputGuideHook
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <c>app.training.TrainingManager.GetGuideData</c> (not intended for direct calls by
+    ///     mods). Dereferences the captured list pointers and invokes the registered <see cref="InputGuideDelegate" />.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.training.TrainingManager),
         "GetGuideData(app.training.TrainingMenuData, System.Collections.Generic.List`1<app.InputGuideData>, System.Collections.Generic.List`1<System.String>)",
         MethodHookType.Post)]

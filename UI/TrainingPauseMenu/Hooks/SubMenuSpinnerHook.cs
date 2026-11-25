@@ -5,14 +5,42 @@ using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.Hooks;
 
+/// <summary>
+///     Drives custom numeric/formatted spinner rows inside SF6's <c>SPINLIST</c> modal submenu
+///     (<c>app.training.UIFlowTrainingMenu_SpinList</c>), supporting dynamic range limits, live value formatting,
+///     conditional row hiding, and offset-adjusted value dispatch.
+/// </summary>
 public static class SubMenuSpinnerHook
 {
+    /// <summary>
+    ///     Optional filter evaluated when a <c>SPINLIST</c> submenu creates its <c>ViewDataList</c>. Returning
+    ///     <see langword="true" /> omits this spinner row from the popup entirely.
+    /// </summary>
+    /// <returns><see langword="true" /> to hide this row from the current submenu popup; <see langword="false" /> to keep it.</returns>
     public delegate bool MaskThisItemRowDelegate();
 
+    /// <summary>
+    ///     Formats the actual integer value (<c>Index + LimitValue.x</c>) for display inside the submenu spinner and
+    ///     indicates whether it differs from its default (non-default values render in SF6's accent color).
+    /// </summary>
+    /// <param name="value">Actual domain integer within <c>[LimitValue.x, LimitValue.y]</c>.</param>
+    /// <returns>
+    ///     A tuple of the rendered display text and <c>isNotDefault</c> (which applies
+    ///     <c>&lt;COLOR preset="FGM_Accent"&gt;</c> when <see langword="true" /> and the row is enabled).
+    /// </returns>
     public delegate (string outputText, bool isNotDefault) SubMenuSpinnerFormatDelegate(int value);
 
+    /// <summary>
+    ///     Supplies the spinner's current backing integer value during submenu open and non-action list refreshes.
+    /// </summary>
+    /// <returns>Current value in domain units (clamped to <c>[LimitValue.x, LimitValue.y]</c> before mapping to scroll index).</returns>
     public delegate int SubMenuSpinnerInitDelegate();
 
+    /// <summary>
+    ///     Optional dynamic bounds provider evaluated on submenu initialization and non-action <c>UpdateList</c>
+    ///     refreshes, updating native <c>TrainingMenuData.LimitValue</c> before mapping <see cref="SubMenuSpinnerInitDelegate" />.
+    /// </summary>
+    /// <returns>Inclusive <c>(Min, Max)</c> domain range.</returns>
     public delegate (int Min, int Max) SubMenuSpinnerLimitDelegate();
 
     private static readonly
@@ -61,6 +89,13 @@ public static class SubMenuSpinnerHook
         CustomSubMenuSpinners.TryRemove(id, out var _);
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.training.UIFlowTrainingMenu_SpinList.Param.Initialize</c> (not intended for
+    ///     direct calls by mods). Marks initialization active so <see cref="OnCreateViewDataPost" /> and
+    ///     <see cref="OnInitList" /> capture and correlate all row scroll-list pointers in order.
+    /// </summary>
+    /// <param name="args">Raw VM argument span (unused).</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.training.UIFlowTrainingMenu_SpinList.Param), "Initialize", MethodHookType.Pre)]
     public static PreHookResult OnSpinListInitializePre(Span<ulong> args)
     {
@@ -70,12 +105,23 @@ public static class SubMenuSpinnerHook
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <c>app.training.UIFlowTrainingMenu_SpinList.Param.Initialize</c> (not intended for
+    ///     direct calls by mods). Ends the initialization capture phase.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.training.UIFlowTrainingMenu_SpinList.Param), "Initialize", MethodHookType.Post)]
     public static void OnSpinListInitializePost(ref ulong retval)
     {
         s_isInitializing = false;
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <c>app.training.UIFlowTrainingMenu_SpinList.Param.CreateViewData</c> (not intended
+    ///     for direct calls by mods). Removes masked custom rows from <c>ViewDataList</c> and queues the surviving
+    ///     <c>ViewData</c> entries for subsequent <see cref="OnInitList" /> pairing.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.training.UIFlowTrainingMenu_SpinList.Param), "CreateViewData", MethodHookType.Post)]
     public static void OnCreateViewDataPost(ref ulong retval)
     {
@@ -147,6 +193,16 @@ public static class SubMenuSpinnerHook
         return (maxValues, mappedIndex, mappedIndex + data.LimitValue.x);
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.UIPartsScrollList.InitList</c> (not intended for direct calls by mods). Pairs
+    ///     each scroll-list instance with its <c>ViewData</c> and patches <c>args[2]</c>/<c>args[3]</c> (count and
+    ///     selected index) for registered custom submenu spinners.
+    /// </summary>
+    /// <param name="args">
+    ///     Raw VM argument span: <c>args[1]</c> is <see cref="app.UIPartsScrollList" />, <c>args[2]</c> is total option
+    ///     count, and <c>args[3]</c> is initial 0-based scroll index.
+    /// </param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.UIPartsScrollList), "InitList", MethodHookType.Pre)]
     public static PreHookResult OnInitList(Span<ulong> args)
     {
@@ -194,6 +250,13 @@ public static class SubMenuSpinnerHook
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.UIPartsSpin.set_IsDisable</c> (not intended for direct calls by mods).
+    ///     Applies dimmed arrow/background overlays (<c>e_tex_sub_custom</c> and arrow panels) while <c>SPINLIST</c>
+    ///     rows transition between enabled and disabled states.
+    /// </summary>
+    /// <param name="args">Raw VM argument span where <c>args[1]</c> is <see cref="app.UIPartsSpin" /> and <c>args[2]</c> is boolean <c>isDisable</c>.</param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.UIPartsSpin), "set_IsDisable", MethodHookType.Pre)]
     public static PreHookResult OnSetDisablePre(Span<ulong> args)
     {
@@ -286,6 +349,16 @@ public static class SubMenuSpinnerHook
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework pre-hook on <c>app.training.UIFlowTrainingMenu_SpinList.Param.UpdateSpinBox(System.Int32, System.Boolean)</c>
+    ///     (not intended for direct calls by mods). Stashes the param pointer, row index, and <c>isAction</c> flag for
+    ///     <see cref="OnUpdateSpinBoxPost" />.
+    /// </summary>
+    /// <param name="args">
+    ///     Raw VM argument span: <c>args[1]</c> is <c>UIFlowTrainingMenu_SpinList.Param</c>, <c>args[2]</c> is row
+    ///     index, and <c>args[3]</c> is boolean <c>isAction</c>.
+    /// </param>
+    /// <returns>Always <see cref="PreHookResult.Continue" />.</returns>
     [MethodHook(typeof(app.training.UIFlowTrainingMenu_SpinList.Param), "UpdateSpinBox(System.Int32, System.Boolean)",
         MethodHookType.Pre)]
     public static PreHookResult OnUpdateSpinBoxPre(Span<ulong> args)
@@ -299,6 +372,13 @@ public static class SubMenuSpinnerHook
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     REFramework post-hook on <c>app.training.UIFlowTrainingMenu_SpinList.Param.UpdateSpinBox(System.Int32, System.Boolean)</c>
+    ///     (not intended for direct calls by mods). Dispatches <c>_UIFunc.Function</c> with offset-adjusted domain
+    ///     values on user actions (or re-syncs limits/index on non-action refreshes) and updates <c>e_txt_0</c> with
+    ///     <see cref="SubMenuSpinnerFormatDelegate" /> output.
+    /// </summary>
+    /// <param name="retval">Raw return value from the hooked method (unused).</param>
     [MethodHook(typeof(app.training.UIFlowTrainingMenu_SpinList.Param), "UpdateSpinBox(System.Int32, System.Boolean)",
         MethodHookType.Post)]
     public static void OnUpdateSpinBoxPost(ref ulong retval)

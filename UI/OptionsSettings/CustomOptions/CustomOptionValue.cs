@@ -1,27 +1,42 @@
-﻿using SF6_Plugin_Core.UI.OptionsSettings.Core;
+using SF6_Plugin_Core.UI.OptionsSettings.Core;
 
 namespace SF6_Plugin_Core.UI.OptionsSettings.CustomOptions;
 
+/// <summary>
+///     Abstract initializer for custom <see cref="app.Option.OptionValueUnit" /> interactive rows (sliders, text
+///     spinners, on/off toggles, and non-numeric labels), allocating and pinning both <c>OptionValueData</c> and
+///     <c>OptionValueSetting</c>.
+/// </summary>
 public abstract class CustomOptionValue : CustomOptionBase, IUICustomOptionsValueElementInitialization
 {
+    /// <summary>Globalized native <see cref="app.Option.OptionValueData" /> holding the option's live integer value and <c>TypeId</c>.</summary>
     protected ManagedObject? _valueDataMo;
+
+    /// <summary>Globalized native <see cref="app.Option.OptionValueSetting" /> holding <c>MinValue</c>, <c>MaxValue</c>, and <c>InitValue</c>.</summary>
     protected ManagedObject? _valueSettingsMo;
+
+    /// <summary>Inclusive upper bound enforced by the Options UI widget.</summary>
     protected int MaxValue { get; init; }
+
+    /// <summary>Inclusive lower bound enforced by the Options UI widget.</summary>
     protected int MinValue { get; init; }
 
     /// <summary>
-    ///     This is the "initial" value as in the default value, and what it will go back to when you press the "Reset to
-    ///     Defaults" button
+    ///     Default integer value written to <c>OptionValueSetting.InitValue</c>, restored when the user presses
+    ///     SF6's "Reset to Defaults" action in the Options menu.
     /// </summary>
     protected int InitValue { get; init; }
 
     /// <summary>
-    ///     Use it as a way to initialize the current value based on your own config or similar
+    ///     Starting integer value assigned to <c>OptionValueData.Value</c> when the native option unit is first
+    ///     constructed (typically loaded from the mod's config).
     /// </summary>
     protected int CurrentValue { get; init; }
 
+    /// <inheritdoc />
     protected override app.Option.SettingDataType SettingDataType { get; init; } = app.Option.SettingDataType.Value;
 
+    /// <inheritdoc />
     public override app.Option.OptionValueUnit InitializeCustomElement(Guid functionNameId)
     {
         EnsureMessageRegistration();
@@ -88,12 +103,17 @@ public abstract class CustomOptionValue : CustomOptionBase, IUICustomOptionsValu
         return newOptionData;
     }
 
+    /// <inheritdoc />
     public override app.Option.OptionValueUnit GetElementData()
     {
         return _customOptionDataMo?.As<app.Option.OptionValueUnit>() ??
                throw new InvalidOperationException("Custom element data has not been initialized.");
     }
 
+    /// <summary>
+    ///     Releases base native objects/messages as well as the extra <see cref="_valueDataMo" /> and
+    ///     <see cref="_valueSettingsMo" /> handles.
+    /// </summary>
     public override void Clear()
     {
         base.Clear();

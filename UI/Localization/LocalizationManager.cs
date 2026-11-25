@@ -1,7 +1,11 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace SF6_Plugin_Core.UI.Localization;
 
+/// <summary>
+///     Loads JSON translation tables keyed by mod alias and resolves per-<see cref="via.Language" /> strings for
+///     <see cref="CustomMessage" /> lookups.
+/// </summary>
 public static class LocalizationManager
 {
     private const int LanguageCount = (int)via.Language.Max;
@@ -13,8 +17,11 @@ public static class LocalizationManager
     [ThreadStatic] internal static string? CurrentScope;
 
     /// <summary>
-    ///     Temporarily sets the default localization file scope for all CustomMessages created inside the 'using' block.
+    ///     Temporarily scopes unqualified <see cref="CustomMessage.FromKey" /> lookups on the current thread to the
+    ///     translation table registered under <paramref name="fileKey" />, restoring the previous scope on dispose.
     /// </summary>
+    /// <param name="fileKey">The filename (with or without <c>.json</c>) or custom alias passed to <see cref="LoadTranslations" />.</param>
+    /// <returns>An <see cref="IDisposable" /> guard that restores the prior thread-local scope when disposed.</returns>
     public static IDisposable UseFileScope(string fileKey)
     {
         var cleanKey = Path.GetFileNameWithoutExtension(fileKey);
@@ -24,8 +31,12 @@ public static class LocalizationManager
     }
 
     /// <summary>
-    ///     Loads a JSON file (automatically appending .json if omitted) and registers it under its filename or alias.
+    ///     Loads a JSON translation file mapping translation keys to <see cref="via.Language" /> name/string pairs
+    ///     and stores them under <paramref name="customAlias" /> (or the filename without extension). Missing languages
+    ///     fall back to the <c>English</c> entry or, if absent, the key name itself.
     /// </summary>
+    /// <param name="relativePathWithoutOrWithExt">Path to the localization JSON file (appends <c>.json</c> if omitted).</param>
+    /// <param name="customAlias">Optional namespace key used by <see cref="UseFileScope" /> and <c>"Alias:Key"</c> lookups.</param>
     public static void LoadTranslations(string relativePathWithoutOrWithExt, string? customAlias = null)
     {
         var filePath = relativePathWithoutOrWithExt;

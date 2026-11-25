@@ -2,6 +2,19 @@ using SF6_Plugin_Core.UI.InjectionShared;
 
 namespace SF6_Plugin_Core.UI.TrainingPauseMenu.CustomElements;
 
+/// <summary>
+///     Request node representing an injected <see cref="app.training.TrainingMenuData" /> item in the Training
+///     Pause Menu, recursively allocating globalized <c>ChildData</c> arrays and binding attached hooks on each
+///     <see cref="Core.PauseMenuManager" /> rebuild.
+/// </summary>
+/// <param name="functionId">
+///     Stable mod <see cref="Guid" /> mapped to a fresh custom <see cref="app.training.TrainingFuncType" /> ID on
+///     each UI rebuild.
+/// </param>
+/// <param name="customInitializer">
+///     Element initializer (such as <see cref="RowButtonInitializer" />, <see cref="SpinnerInitializer" />,
+///     <see cref="SpinnerItemTextInitializer" />, or <see cref="SliderInitializer" />).
+/// </param>
 public class UICustomElementRequestNode(Guid functionId, IUICustomTrainingElementInitialization customInitializer)
     : UICustomRequestNode<app.training.TrainingMenuData, IUICustomTrainingElementInitialization>(functionId,
         customInitializer)

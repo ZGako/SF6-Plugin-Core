@@ -7,7 +7,9 @@ using SF6_Plugin_Core.UI.OptionsSettings.Requests;
 namespace SF6_Plugin_Core.UI.OptionsSettings.Core;
 
 /// <summary>
-///     Controls dynamic tab creation, layout restructuring, element elimination, and injection for the Options menu.
+///     Manages queued UI tree modifications (element appends, removals, and reorders) over SF6's
+///     <c>app.OptionManager.UnitLists</c>, applying batched updates during <see cref="LateUpdateBehavior" /> while
+///     preserving snapshots of the original vanilla option lists for clean rollback.
 /// </summary>
 public static class OptionsSettingsManager
 {
@@ -116,10 +118,22 @@ public static class OptionsSettingsManager
     }
 
     /// <summary>
-    ///     Retrieves the original unmodified <see cref="app.Option.OptionUnitBase" /> at the specified path
-    ///     (where <c>elementPath[0]</c> is the <see cref="app.Option.TabType" /> and subsequent indices traverse into the
-    ///     tab's elements).
+    ///     Retrieves the original unmodified <see cref="app.Option.OptionUnitBase" /> at <paramref name="elementPath" />,
+    ///     reading from cached original snapshots when an intermediate group has already been modified.
     /// </summary>
+    /// <param name="elementPath">
+    ///     Non-empty path of at least 2 elements where <c>elementPath[0]</c> is cast to
+    ///     <see cref="app.Option.TabType" /> and each subsequent index selects a unit (traversing
+    ///     <see cref="app.Option.OptionGroupUnit.ChildUnits" /> for intermediate indices).
+    /// </param>
+    /// <returns>The original <see cref="app.Option.OptionUnitBase" /> at the target path.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="elementPath" /> has fewer than 2 elements.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when <see cref="GameSingletonManager.OptionManager" /> is unavailable, the root
+    ///     <see cref="app.Option.TabType" /> is missing from <c>UnitLists</c>, or an intermediate index is not an
+    ///     <see cref="app.Option.OptionGroupUnit" />.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when an index falls outside the target list's bounds.</exception>
     public static app.Option.OptionUnitBase GetOriginalElement(List<int> elementPath)
     {
         if (elementPath.Count < 2)
@@ -159,6 +173,12 @@ public static class OptionsSettingsManager
         }
     }
 
+    /// <summary>
+    ///     REFramework post-<c>LateUpdateBehavior</c> callback (not intended for direct calls by mods). Flushes
+    ///     queued <see cref="RegisterModification(List{int}, IUIModificationRequest)" /> /
+    ///     <see cref="UnregisterModification" /> changes via a post-order DFS rebuild when <c>OptionManager.UnitLists</c>
+    ///     is live, or releases all cached state if <c>OptionManager</c> is unavailable.
+    /// </summary>
     [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
     public static void OnLateUpdateBehavior()
     {
@@ -374,9 +394,31 @@ public static class OptionsSettingsManager
     }
 
     /// <summary>
-    ///     Registers a modification request at the specified non-empty traversal path
-    ///     (where <c>traversalPath[0]</c> is the <see cref="app.Option.TabType" />).
+    ///     Queues a modification request (<see cref="OptionsAppendElementsRequest" />, <see cref="ReorderRequest" />,
+    ///     or <see cref="RemoveElementsRequest" />) to run against the group list at <paramref name="traversalPath" />
+    ///     on the next <see cref="LateUpdateBehavior" />.
     /// </summary>
+    /// <remarks>
+    ///     Snapshots the unmodified <c>OptionUnitBase</c> array at the target group before queueing the change and
+    ///     claims <see cref="ExclusiveModificationRequest" /> instances so a single instance cannot be double-registered.
+    ///     Hook requests such as <c>OnValueTypeEventHookRequest</c> and <c>OnDisableReasonHookRequest</c> are
+    ///     attached directly to <see cref="SF6_Plugin_Core.UI.OptionsSettings.CustomOptions.UICustomOptionRequestNode" />
+    ///     elements rather than registered via this method.
+    /// </remarks>
+    /// <param name="traversalPath">
+    ///     Non-empty path starting with an integer <see cref="app.Option.TabType" />, followed by 0-based indices into
+    ///     each nested <see cref="app.Option.OptionGroupUnit.ChildUnits" /> list down to the target container.
+    /// </param>
+    /// <param name="modificationRequest">
+    ///     An <see cref="OptionsAppendElementsRequest" />, <see cref="ReorderRequest" />, or
+    ///     <see cref="RemoveElementsRequest" />.
+    /// </param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="traversalPath" /> is empty.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown if <see cref="GameSingletonManager.OptionManager" /> is unavailable, any path segment does not exist
+    ///     or is not a group unit, <paramref name="modificationRequest" /> is already claimed, or the request type is
+    ///     unsupported at this level.
+    /// </exception>
     public static void RegisterModification(List<int> traversalPath, IUIModificationRequest modificationRequest)
     {
         if (modificationRequest is AppendNewTabRequest)
@@ -466,6 +508,11 @@ public static class OptionsSettingsManager
         }
     }
 
+    /// <summary>
+    ///     Queues removal of a previously registered modification request and marks the Options UI dirty so the next
+    ///     <see cref="LateUpdateBehavior" /> restores affected lists (and disposes custom native objects/messages).
+    /// </summary>
+    /// <param name="modificationRequest">The request instance originally passed to <see cref="RegisterModification(List{int}, IUIModificationRequest)" />.</param>
     public static void UnregisterModification(IUIModificationRequest modificationRequest)
     {
         lock (ModificationLock)
