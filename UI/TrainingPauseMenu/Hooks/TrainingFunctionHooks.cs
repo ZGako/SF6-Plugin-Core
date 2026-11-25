@@ -32,27 +32,29 @@ public static class TrainingFunctionHooks
     private static readonly ConcurrentDictionary<Guid, FunctionDelegate> CustomOptionXFunctions = [];
     private static readonly ConcurrentDictionary<Guid, FunctionDelegate> CustomOptionYFunctions = [];
 
-    [ThreadStatic] private static bool s_handledCustomFunction;
+    [ThreadStatic] private static Stack<(bool Handled, bool ReturnValue)>? s_functionCallStack;
+    [ThreadStatic] private static Stack<(bool Handled, bool ReturnValue)>? s_optionSelectCallStack;
+    [ThreadStatic] private static Stack<(bool Handled, bool ReturnValue)>? s_optionXCallStack;
+    [ThreadStatic] private static Stack<(bool Handled, bool ReturnValue)>? s_optionYCallStack;
 
-    [ThreadStatic] private static bool s_returnValueForCustomFunction;
+    private static void PushCallState(ref Stack<(bool Handled, bool ReturnValue)>? stack, bool handled,
+        bool returnValue)
+    {
+        stack ??= new Stack<(bool Handled, bool ReturnValue)>();
+        stack.Push((handled, returnValue));
+    }
 
+    private static bool TryPopCallState(Stack<(bool Handled, bool ReturnValue)>? stack, out bool returnValue)
+    {
+        if (stack != null && stack.TryPop(out var state) && state.Handled)
+        {
+            returnValue = state.ReturnValue;
+            return true;
+        }
 
-    // OptionSelectFunction specific methods
-
-
-    // ThreadStatic ensures thread-safety if the game calls this concurrently
-    [ThreadStatic] private static bool s_handledCustomOptionSelectFunction;
-
-    [ThreadStatic] private static bool s_returnValueForCustomOptionSelectFunction;
-
-
-    [ThreadStatic] private static bool s_handledCustomOptionXFunction;
-
-    [ThreadStatic] private static bool s_returnValueForCustomOptionXFunction;
-
-    [ThreadStatic] private static bool s_handledCustomOptionYFunction;
-
-    [ThreadStatic] private static bool s_returnValueForCustomOptionYFunction;
+        returnValue = false;
+        return false;
+    }
 
     // Function specific methods
 
@@ -75,43 +77,38 @@ public static class TrainingFunctionHooks
     {
         // FuncType argument
         var funcType = (int)args[2];
+        var handled = false;
+        var returnValue = false;
+        var hookResult = PreHookResult.Continue;
 
-        if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId)) return PreHookResult.Continue;
-
-        if (CustomFunctions.TryGetValue(functionId, out var action))
-        {
-            var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
-            var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
-
-            if (baseParam == null || viewData == null)
+        if (FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId) &&
+            CustomFunctions.TryGetValue(functionId, out var action))
+            try
             {
-                API.LogWarning("Failed to retrieve baseParam or viewData in OnFunctionPre.");
-                return PreHookResult.Continue;
+                var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
+                var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
+
+                // Invoke function
+                var result = action.Invoke(baseParam, viewData, (int)args[5]);
+                handled = true;
+                returnValue = result.ReturnValue;
+                hookResult = result.HookResult;
+            }
+            catch (Exception ex)
+            {
+                API.LogError($"Exception in OnFunctionPre: {ex.Message}");
             }
 
-            // Invoke function
-            var result = action.Invoke(baseParam, viewData, (int)args[5]);
-            s_returnValueForCustomFunction = result.ReturnValue;
-            s_handledCustomFunction = true;
-
-            // Skip the game's original handler
-            return result.HookResult;
-        }
-
-        return PreHookResult.Continue;
+        PushCallState(ref s_functionCallStack, handled, returnValue);
+        return hookResult;
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc), "Function", MethodHookType.Post)]
     public static void OnFunctionPost(ref ulong retval)
     {
-        if (s_handledCustomFunction)
-        {
+        if (TryPopCallState(s_functionCallStack, out var returnValue))
             // output is Boolean = true
-            retval = s_returnValueForCustomFunction ? 1UL : 0UL;
-
-            // Reset for the next call
-            s_handledCustomFunction = false;
-        }
+            retval = returnValue ? 1UL : 0UL;
     }
 
     internal static void RegisterCustomOptionSelectFunction(Guid id, FunctionDelegate action)
@@ -137,13 +134,12 @@ public static class TrainingFunctionHooks
     {
         // FuncType argument
         var funcType = (int)args[2];
+        var handled = false;
+        var returnValue = false;
+        var hookResult = PreHookResult.Continue;
 
-        if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId)) return PreHookResult.Continue;
-
-        // Adjust the FuncType to match our custom range
-        if (CustomOptionSelectFunctions.TryGetValue(functionId!, out var action))
-        {
-            FunctionResult result;
+        if (FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId) &&
+            CustomOptionSelectFunctions.TryGetValue(functionId!, out var action))
             try
             {
                 var rowIndex = (int)args[5];
@@ -152,24 +148,18 @@ public static class TrainingFunctionHooks
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
 
                 // Invoke function
-                result = action.Invoke(baseParam, viewData, rowIndex);
-                s_returnValueForCustomOptionSelectFunction = result.ReturnValue;
+                var result = action.Invoke(baseParam, viewData, rowIndex);
+                handled = true;
+                returnValue = result.ReturnValue;
+                hookResult = result.HookResult;
             }
             catch (Exception ex)
             {
                 API.LogError($"Exception in OnOptionSelectFunctionPre: {ex.Message}");
-                return PreHookResult.Continue;
             }
 
-            // end of debugging
-
-            s_handledCustomOptionSelectFunction = true;
-
-            // Skip the game's original handler
-            return result.HookResult;
-        }
-
-        return PreHookResult.Continue;
+        PushCallState(ref s_optionSelectCallStack, handled, returnValue);
+        return hookResult;
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc),
@@ -177,14 +167,9 @@ public static class TrainingFunctionHooks
         MethodHookType.Post)]
     public static void OnOptionSelectFunctionPost(ref ulong retval)
     {
-        if (s_handledCustomOptionSelectFunction)
-        {
+        if (TryPopCallState(s_optionSelectCallStack, out var returnValue))
             // output is Boolean, determines whether or not the menu should close.
-            retval = s_returnValueForCustomOptionSelectFunction ? 1UL : 0UL;
-
-            // Reset for the next call
-            s_handledCustomOptionSelectFunction = false;
-        }
+            retval = returnValue ? 1UL : 0UL;
     }
 
 
@@ -208,31 +193,29 @@ public static class TrainingFunctionHooks
     public static PreHookResult OnOptionXFunctionPre(Span<ulong> args)
     {
         var funcType = (int)args[2];
+        var handled = false;
+        var returnValue = false;
+        var hookResult = PreHookResult.Continue;
 
-        if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId)) return PreHookResult.Continue;
-
-        if (CustomOptionXFunctions.TryGetValue(functionId, out var action))
-        {
-            FunctionResult result;
+        if (FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId) &&
+            CustomOptionXFunctions.TryGetValue(functionId, out var action))
             try
             {
                 var rowIndex = (int)args[5];
                 var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
-                result = action.Invoke(baseParam, viewData, rowIndex);
-                s_returnValueForCustomOptionXFunction = result.ReturnValue;
+                var result = action.Invoke(baseParam, viewData, rowIndex);
+                handled = true;
+                returnValue = result.ReturnValue;
+                hookResult = result.HookResult;
             }
             catch (Exception ex)
             {
                 API.LogError($"Exception in OnOptionXFunctionPre: {ex.Message}");
-                return PreHookResult.Continue;
             }
 
-            s_handledCustomOptionXFunction = true;
-            return result.HookResult;
-        }
-
-        return PreHookResult.Continue;
+        PushCallState(ref s_optionXCallStack, handled, returnValue);
+        return hookResult;
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc),
@@ -240,11 +223,8 @@ public static class TrainingFunctionHooks
         MethodHookType.Post)]
     public static void OnOptionXFunctionPost(ref ulong retval)
     {
-        if (s_handledCustomOptionXFunction)
-        {
-            retval = s_returnValueForCustomOptionXFunction ? 1UL : 0UL;
-            s_handledCustomOptionXFunction = false;
-        }
+        if (TryPopCallState(s_optionXCallStack, out var returnValue))
+            retval = returnValue ? 1UL : 0UL;
     }
 
     internal static void RegisterCustomOptionYFunction(Guid id, FunctionDelegate action)
@@ -267,31 +247,29 @@ public static class TrainingFunctionHooks
     public static PreHookResult OnOptionYFunctionPre(Span<ulong> args)
     {
         var funcType = (int)args[2];
+        var handled = false;
+        var returnValue = false;
+        var hookResult = PreHookResult.Continue;
 
-        if (!FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId)) return PreHookResult.Continue;
-
-        if (CustomOptionYFunctions.TryGetValue(functionId, out var action))
-        {
-            FunctionResult result;
+        if (FunctionTypeRegistry.TryGetFunctionId(funcType, out var functionId) &&
+            CustomOptionYFunctions.TryGetValue(functionId, out var action))
             try
             {
                 var rowIndex = (int)args[5];
                 var baseParam = MemoryHelpers.GetAddressAs<app.training.BaseParam>(args[3]);
                 var viewData = MemoryHelpers.GetAddressAs<app.training.UIFlowTrainingMenu.Param.ViewData>(args[4]);
-                result = action.Invoke(baseParam, viewData, rowIndex);
-                s_returnValueForCustomOptionYFunction = result.ReturnValue;
+                var result = action.Invoke(baseParam, viewData, rowIndex);
+                handled = true;
+                returnValue = result.ReturnValue;
+                hookResult = result.HookResult;
             }
             catch (Exception ex)
             {
                 API.LogError($"Exception in OnOptionYFunctionPre: {ex.Message}");
-                return PreHookResult.Continue;
             }
 
-            s_handledCustomOptionYFunction = true;
-            return result.HookResult;
-        }
-
-        return PreHookResult.Continue;
+        PushCallState(ref s_optionYCallStack, handled, returnValue);
+        return hookResult;
     }
 
     [MethodHook(typeof(app.training.TrainingMenuFunc),
@@ -299,11 +277,8 @@ public static class TrainingFunctionHooks
         MethodHookType.Post)]
     public static void OnOptionYFunctionPost(ref ulong retval)
     {
-        if (s_handledCustomOptionYFunction)
-        {
-            retval = s_returnValueForCustomOptionYFunction ? 1UL : 0UL;
-            s_handledCustomOptionYFunction = false;
-        }
+        if (TryPopCallState(s_optionYCallStack, out var returnValue))
+            retval = returnValue ? 1UL : 0UL;
     }
 
     internal static void Clear()

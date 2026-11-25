@@ -12,12 +12,12 @@ public class UICustomElementRequestNode(Guid functionId, IUICustomTrainingElemen
         // this way the function types will be numbered similarly to the game (doesn't actually matter)
         var customElementData = CustomInitializer.InitializeCustomElement(FunctionId);
 
-        ChildDataArrayMo?.ReleaseIfGlobalized();
+        var previousChildDataArrayMo = ChildDataArrayMo;
         // create a new array (a bit of a waste to do it every time, but it shouldn't happen often enough to really matter anyways)
-        ChildDataArrayMo = app.training.TrainingMenuData.REFType.CreateManagedArray((uint)ChildNodes.Count);
-        ChildDataArrayMo.Globalize();
+        var newChildDataArrayMo = app.training.TrainingMenuData.REFType.CreateManagedArray((uint)ChildNodes.Count);
+        newChildDataArrayMo.Globalize();
 
-        var childDataArray = ChildDataArrayMo.As<app.training.TrainingMenuData_Array1D>();
+        var childDataArray = newChildDataArrayMo.As<app.training.TrainingMenuData_Array1D>();
         if (ChildNodes.Count > 0)
             for (var i = 0; i < ChildNodes.Count; i++)
             {
@@ -25,8 +25,10 @@ public class UICustomElementRequestNode(Guid functionId, IUICustomTrainingElemen
                 childDataArray[i] = childData;
             }
 
-        // assign the childData array to the custom element
+        // assign the childData array to the custom element before releasing the previous array
         customElementData.ChildData = childDataArray;
+        ChildDataArrayMo = newChildDataArrayMo;
+        previousChildDataArrayMo?.ReleaseIfGlobalized();
 
 
         // add the hooks to the custom element

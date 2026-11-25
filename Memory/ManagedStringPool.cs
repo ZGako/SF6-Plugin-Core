@@ -15,6 +15,7 @@ namespace SF6_Plugin_Core.Memory;
 /// </remarks>
 public sealed class ManagedStringPool : IDisposable
 {
+    private readonly Lock _lock = new();
     private readonly Dictionary<string, SystemString> _pool = [];
 
     /// <summary>
@@ -38,15 +39,18 @@ public sealed class ManagedStringPool : IDisposable
     /// <exception cref="InvalidOperationException">Thrown when REFramework fails to allocate the string in the RE Engine.</exception>
     public SystemString GetOrCreate(string text)
     {
-        if (!_pool.TryGetValue(text, out var engineStr))
+        lock (_lock)
         {
-            engineStr = VM.CreateString(text)
-                        ?? throw new InvalidOperationException("Failed to create engine string.");
-            engineStr.Globalize();
-            _pool[text] = engineStr;
-        }
+            if (!_pool.TryGetValue(text, out var engineStr))
+            {
+                engineStr = VM.CreateString(text)
+                            ?? throw new InvalidOperationException("Failed to create engine string.");
+                engineStr.Globalize();
+                _pool[text] = engineStr;
+            }
 
-        return engineStr;
+            return engineStr;
+        }
     }
 
     /// <summary>
@@ -58,7 +62,10 @@ public sealed class ManagedStringPool : IDisposable
     /// </remarks>
     public void Clear()
     {
-        foreach (var str in _pool.Values) str.ReleaseIfGlobalized();
-        _pool.Clear();
+        lock (_lock)
+        {
+            foreach (var str in _pool.Values) str.ReleaseIfGlobalized();
+            _pool.Clear();
+        }
     }
 }

@@ -61,6 +61,21 @@ public static class MemoryHelpers
                                                                     $"Proxy creation failed for object at address {managedObj.GetAddress()}.");
     }
 
+    private static int GetValueTypeFieldSize(TypeDefinition fieldType)
+    {
+        if (fieldType.IsEnum())
+            fieldType = fieldType.UnderlyingType ?? fieldType;
+
+        return fieldType.FullName switch
+        {
+            "System.Boolean" or "System.Byte" or "System.SByte" => 1,
+            "System.Int16" or "System.UInt16" or "System.Char" => 2,
+            "System.Int32" or "System.UInt32" or "System.Single" => 4,
+            "System.Int64" or "System.UInt64" or "System.Double" or "System.IntPtr" or "System.UIntPtr" => 8,
+            _ => (int)fieldType.ValueTypeSize
+        };
+    }
+
     /// <summary>
     ///     Copies all non-static fields from a source ManagedObject to a target ManagedObject of the same type.
     /// </summary>
@@ -71,26 +86,45 @@ public static class MemoryHelpers
     {
         var sourceAddr = source.GetAddress();
         var targetAddr = target.GetAddress();
+        if (sourceAddr == 0 || targetAddr == 0 || sourceAddr == targetAddr)
+            return;
 
         foreach (var field in typeDef.GetFields())
         {
             if (field.IsStatic()) continue;
             try
             {
+                var srcFieldPtr = field.GetDataRaw(sourceAddr, false);
+                var dstFieldPtr = field.GetDataRaw(targetAddr, false);
+                if (srcFieldPtr == 0 || dstFieldPtr == 0)
+                    continue;
+
                 if (field.Type.IsValueType())
                 {
-                    var size = field.Type.ValueTypeSize;
+                    var size = GetValueTypeFieldSize(field.Type);
+                    if (size <= 0)
+                        continue;
+
                     var buffer = new byte[size];
-                    Marshal.Copy((IntPtr)(sourceAddr + field.OffsetFromBase), buffer, 0, (int)size);
-                    Marshal.Copy(buffer, 0, (IntPtr)(targetAddr + field.OffsetFromBase), (int)size);
+                    Marshal.Copy((IntPtr)srcFieldPtr, buffer, 0, size);
+                    Marshal.Copy(buffer, 0, (IntPtr)dstFieldPtr, size);
                 }
                 else
                 {
-                    var value = field.GetDataBoxed(sourceAddr, false);
-                    if (value == null)
-                        Marshal.WriteIntPtr((IntPtr)(targetAddr + field.OffsetFromBase), IntPtr.Zero);
+                    var srcObjPtr = Marshal.ReadIntPtr((IntPtr)srcFieldPtr);
+                    var dstObjPtr = Marshal.ReadIntPtr((IntPtr)dstFieldPtr);
+                    if (srcObjPtr == dstObjPtr)
+                        continue;
+
+                    if (srcObjPtr == IntPtr.Zero)
+                    {
+                        field.SetDataBoxed(targetAddr, null, false);
+                    }
                     else
+                    {
+                        var value = field.GetDataBoxed(sourceAddr, false);
                         field.SetDataBoxed(targetAddr, value, false);
+                    }
                 }
             }
             catch (Exception ex)
@@ -108,6 +142,10 @@ public static class MemoryHelpers
     /// <param name="guid">The Guid value to set.</param>
     public static void SetGuidField(this ManagedObject obj, string fieldName, Guid guid)
     {
+        var addr = obj.GetAddress();
+        if (addr == 0)
+            return;
+
         var typeDef = obj.GetTypeDefinition();
         var field = typeDef.GetField(fieldName);
         if (field == null)
@@ -116,8 +154,14 @@ public static class MemoryHelpers
             return;
         }
 
-        var destAddress = (IntPtr)(obj.GetAddress() + field.OffsetFromBase);
-        Marshal.Copy(guid.ToByteArray(), 0, destAddress, 16);
+        var destRaw = field.GetDataRaw(addr, false);
+        if (destRaw == 0)
+        {
+            API.LogWarning($"Field {fieldName} resolved to null address on {typeDef.FullName}");
+            return;
+        }
+
+        Marshal.Copy(guid.ToByteArray(), 0, (IntPtr)destRaw, 16);
     }
 
     /// <summary>

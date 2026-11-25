@@ -12,6 +12,7 @@ public static class GameSingletonManager
     private static readonly ConcurrentDictionary<GameSingletonTypes, SingletonHooks> RegisteredSingletons = [];
 
     private static readonly GameSingletonTypes[] AllSingletonTypes = Enum.GetValues<GameSingletonTypes>();
+    private static volatile bool _isReleasingTrainingManager;
 
     // Publicly accessible singleton instances
 
@@ -22,9 +23,11 @@ public static class GameSingletonManager
     {
         get
         {
+            if (_isReleasingTrainingManager) return null;
             if (field != null) return field;
+
             var tm = API.GetManagedSingletonT<app.training.TrainingManager>();
-            if (tm != null && tm.IsInit) field = tm;
+            if (tm != null && tm.IsInit && tm._UIData?._MenuData != null) field = tm;
 
             return field;
         }
@@ -202,10 +205,10 @@ public static class GameSingletonManager
         }
     }
 
-    [MethodHook(typeof(app.training.TrainingManager),
-        "Release", MethodHookType.Pre)]
-    public static PreHookResult OnTrainingManagerReleasePre(Span<ulong> args)
+    private static void ReleaseTrainingManagerState()
     {
+        _isReleasingTrainingManager = true;
+
         if (SingletonReadyStates.TryGetValue(GameSingletonTypes.TrainingManager, out var isReady) && isReady)
         {
             if (RegisteredSingletons.TryGetValue(GameSingletonTypes.TrainingManager, out var hooks))
@@ -217,9 +220,36 @@ public static class GameSingletonManager
             TrainingManager = null;
             SingletonReadyStates[GameSingletonTypes.TrainingManager] = false;
         }
+    }
 
-
+    [MethodHook(typeof(app.training.TrainingManager),
+        "Release", MethodHookType.Pre)]
+    public static PreHookResult OnTrainingManagerReleasePre(Span<ulong> args)
+    {
+        ReleaseTrainingManagerState();
         return PreHookResult.Continue;
+    }
+
+    [MethodHook(typeof(app.training.TrainingManager),
+        "Release", MethodHookType.Post)]
+    public static void OnTrainingManagerReleasePost(ref ulong retval)
+    {
+        _isReleasingTrainingManager = false;
+    }
+
+    [MethodHook(typeof(app.training.TrainingManager),
+        "doOnDestroy", MethodHookType.Pre)]
+    public static PreHookResult OnTrainingManagerDestroyPre(Span<ulong> args)
+    {
+        ReleaseTrainingManagerState();
+        return PreHookResult.Continue;
+    }
+
+    [MethodHook(typeof(app.training.TrainingManager),
+        "doOnDestroy", MethodHookType.Post)]
+    public static void OnTrainingManagerDestroyPost(ref ulong retval)
+    {
+        _isReleasingTrainingManager = false;
     }
 
     /// <summary>
@@ -327,6 +357,7 @@ public static class GameSingletonManager
 
     internal static void Clear()
     {
+        _isReleasingTrainingManager = false;
         SingletonReadyStates.Clear();
         RegisteredSingletons.Clear();
         UIAgentManager = null;
@@ -337,6 +368,7 @@ public static class GameSingletonManager
         ResourceManager = null;
         GuiManager = null;
         OptionManager = null;
+        ShortcutSetting = null;
     }
 
     private enum GameSingletonTypes

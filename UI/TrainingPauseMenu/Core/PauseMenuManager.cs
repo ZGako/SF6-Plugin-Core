@@ -18,15 +18,135 @@ public static class PauseMenuManager
 
     private static readonly UICachedDataNode RootNode = new(null); // root node of the cached data tree
     private static readonly Lock ModificationLock = new();
+    private static readonly List<Action> PendingDisposals = [];
     private static volatile bool _isDirty;
+
+    private static readonly Lazy<Field?> TrainingManagerUIDataFieldLazy =
+        new(() => app.training.TrainingManager.REFType?.GetField("_UIData"));
+
+    private static readonly Lazy<Field?> UIDataMenuDataFieldLazy =
+        new(() => (app.training.TrainingPauseMenuUserData.REFType
+                   ?? API.GetTDB().FindType("app.training.TrainingPauseMenuUserData"))?.GetField("_MenuData"));
+
+    private static readonly Lazy<Field?> TrainingMenuDataChildDataFieldLazy =
+        new(() => app.training.TrainingMenuData.REFType?.GetField("_ChildData"));
+
+    private static readonly Lazy<Field?> MessageIdFieldLazy =
+        new(() => app.training.TrainingMenuData.REFType?.GetField("_MessageID"));
+
+    private static readonly Lazy<Field?> SubMessageIdFieldLazy =
+        new(() => app.training.TrainingMenuData.REFType?.GetField("_SubMessageID"));
+
+    private static readonly Lazy<Field?> GuideMessageFieldLazy =
+        new(() => app.training.TrainingMenuData.REFType?.GetField("_GuideMessage"));
+
+    private static readonly Lazy<Field?> GuideMessageIdFieldLazy =
+        new(() => app.training.TrainingMenuData.REFType?.GetField("_GuideMessageID"));
+
+    private static readonly Lazy<Field?> EndWordsGuidFieldLazy =
+        new(() => app.training.TrainingMenuData.REFType?.GetField("_EndWordsGuid"));
+
+    private static Field? TrainingManagerUIDataField => TrainingManagerUIDataFieldLazy.Value;
+    private static Field? UIDataMenuDataField => UIDataMenuDataFieldLazy.Value;
+    private static Field? TrainingMenuDataChildDataField => TrainingMenuDataChildDataFieldLazy.Value;
+
+    private static Field? MessageIdField => MessageIdFieldLazy.Value;
+    private static Field? SubMessageIdField => SubMessageIdFieldLazy.Value;
+    private static Field? GuideMessageField => GuideMessageFieldLazy.Value;
+    private static Field? GuideMessageIdField => GuideMessageIdFieldLazy.Value;
+    private static Field? EndWordsGuidField => EndWordsGuidFieldLazy.Value;
+
+    private static Guid TryReadGuidField(ManagedObject mo, Field? field)
+    {
+        if (field == null) return Guid.Empty;
+        var rawPtr = field.GetDataRaw(mo.GetAddress(), false);
+        return rawPtr != 0 ? Marshal.PtrToStructure<Guid>((nint)rawPtr) : Guid.Empty;
+    }
+
+    private static bool IsValidManagedObject(ManagedObject? mo)
+    {
+        if (mo == null) return false;
+        var addr = mo.GetAddress();
+        return addr != 0 && ManagedObject.IsManagedObject(addr);
+    }
+
+    private static bool IsTrainingMenuData(ManagedObject? mo)
+    {
+        if (!IsValidManagedObject(mo)) return false;
+        var typeDef = mo!.GetTypeDefinition();
+        var menuDataType = app.training.TrainingMenuData.REFType;
+        return typeDef != null && menuDataType != null && typeDef.IsDerivedFrom(menuDataType);
+    }
+
+    private static ManagedObject? TryGetChildDataArray(ManagedObject? elementMo)
+    {
+        if (elementMo == null) return null;
+
+        if (!IsTrainingMenuData(elementMo))
+        {
+            var actualType = IsValidManagedObject(elementMo)
+                ? elementMo.GetTypeDefinition()?.FullName ?? "unknown"
+                : "invalid/freed";
+            API.LogWarning(
+                $"[PauseMenuManager] Expected TrainingMenuData before reading _ChildData at 0x{elementMo.GetAddress():X}, got '{actualType}'.");
+            return null;
+        }
+
+        var childDataMo = TrainingMenuDataChildDataField?.GetDataBoxed(elementMo.GetAddress(), false) as ManagedObject;
+        return IsValidManagedObject(childDataMo) ? childDataMo : null;
+    }
+
+    private static ManagedObject? TryGetMenuDataElement(ManagedObject? arrayMo, int index)
+    {
+        if (!IsValidManagedObject(arrayMo)) return null;
+
+        if (arrayMo!.GetTypeDefinition()?.GetVMObjType() != VMObjType.Array)
+        {
+            API.LogWarning(
+                $"[PauseMenuManager] Expected array at 0x{arrayMo.GetAddress():X}, got '{arrayMo.GetTypeDefinition()?.FullName ?? "unknown"}'.");
+            return null;
+        }
+
+        var arraySys = arrayMo.As<_System.Array>();
+        if (arraySys == null) return null;
+
+        var length = arraySys.Length;
+        if (index < 0 || index >= length)
+        {
+            API.LogWarning(
+                $"[PauseMenuManager] Menu data index {index} is out of bounds for array of length {length}.");
+            return null;
+        }
+
+        var elem = arraySys.GetValue(index) as ManagedObject;
+        if (elem == null) return null;
+
+        if (!IsTrainingMenuData(elem))
+        {
+            var actualType = IsValidManagedObject(elem)
+                ? elem.GetTypeDefinition()?.FullName ?? "unknown"
+                : "invalid/freed";
+            API.LogWarning(
+                $"[PauseMenuManager] Element at index {index} (0x{elem.GetAddress():X}) is '{actualType}', expected TrainingMenuData.");
+            return null;
+        }
+
+        return elem;
+    }
 
     private static ManagedObject? TryGetUIDataMo()
     {
         if (GameSingletonManager.TrainingManager == null) return null;
 
         var trainingManagerMo = API.GetManagedSingleton("app.training.TrainingManager");
-        var uiDataMo = (trainingManagerMo as IObject)?.GetField("_UIData") as ManagedObject;
-        return (uiDataMo as IObject)?.GetField("_MenuData") as ManagedObject;
+        if (!IsValidManagedObject(trainingManagerMo)) return null;
+
+        var uiDataMo =
+            TrainingManagerUIDataField?.GetDataBoxed(trainingManagerMo!.GetAddress(), false) as ManagedObject;
+        if (!IsValidManagedObject(uiDataMo)) return null;
+
+        var menuDataMo = UIDataMenuDataField?.GetDataBoxed(uiDataMo!.GetAddress(), false) as ManagedObject;
+        return IsValidManagedObject(menuDataMo) ? menuDataMo : null;
     }
 
     private static ManagedObject? GetUIDataMo()
@@ -35,20 +155,122 @@ public static class PauseMenuManager
         if (trainingManagerMo == null)
             throw new InvalidOperationException("TrainingManager is not initialized.");
 
-        // Traverse the fields to get the ManagedObject of the array
-        var uiDataMo = (trainingManagerMo as IObject)?.GetField("_UIData") as ManagedObject;
-        return (uiDataMo as IObject)?.GetField("_MenuData") as ManagedObject;
+        if (!IsValidManagedObject(trainingManagerMo))
+            throw new InvalidOperationException("TrainingManager ManagedObject is invalid.");
+
+        var uiDataMo = TrainingManagerUIDataField?.GetDataBoxed(trainingManagerMo.GetAddress(), false) as ManagedObject;
+        if (!IsValidManagedObject(uiDataMo))
+            return null;
+
+        var menuDataMo = UIDataMenuDataField?.GetDataBoxed(uiDataMo!.GetAddress(), false) as ManagedObject;
+        return IsValidManagedObject(menuDataMo) ? menuDataMo : null;
     }
 
     private static void SetUIDataMo(ManagedObject menuDataArrayMo)
     {
         var trainingManagerMo = API.GetManagedSingleton("app.training.TrainingManager")
                                 ?? throw new InvalidOperationException("TrainingManager is not initialized.");
-        var uiDataMo = (trainingManagerMo as IObject)?.GetField("_UIData") as ManagedObject
-                       ?? throw new InvalidOperationException("_UIData is null.");
-        var menuDataField = uiDataMo.GetTypeDefinition()!.GetField("_MenuData")
+        if (!IsValidManagedObject(trainingManagerMo))
+            throw new InvalidOperationException("TrainingManager ManagedObject is invalid.");
+
+        var uiDataMo = TrainingManagerUIDataField?.GetDataBoxed(trainingManagerMo.GetAddress(), false) as ManagedObject;
+        if (!IsValidManagedObject(uiDataMo))
+            throw new InvalidOperationException("_UIData is null or invalid.");
+
+        var menuDataField = UIDataMenuDataField
                             ?? throw new InvalidOperationException("_MenuData field not found on _UIData.");
+
+        var rawPtr = menuDataField.GetDataRaw(uiDataMo!.GetAddress(), false);
+        if (rawPtr != 0 && Marshal.ReadIntPtr((IntPtr)rawPtr) == (IntPtr)menuDataArrayMo.GetAddress())
+            return;
+
         menuDataField.SetDataBoxed(uiDataMo.GetAddress(), menuDataArrayMo, false);
+    }
+
+    private static void FlushPendingDisposals()
+    {
+        if (PendingDisposals.Count == 0) return;
+
+        var disposals = PendingDisposals.ToArray();
+        PendingDisposals.Clear();
+
+        foreach (var disposeAction in disposals)
+            try
+            {
+                disposeAction();
+            }
+            catch (Exception ex)
+            {
+                API.LogError($"[PauseMenuManager] Failed during deferred disposal: {ex}");
+            }
+    }
+
+    /// <summary>
+    ///     Retrieves the original unmodified <see cref="app.training.TrainingMenuData" /> at the specified traversal path.
+    /// </summary>
+    public static app.training.TrainingMenuData? GetOriginalElement(List<int> traversalPath)
+    {
+        lock (ModificationLock)
+        {
+            var currentArrayMo = RootNode.OriginalMenuDataMo ?? TryGetUIDataMo();
+            if (!IsValidManagedObject(currentArrayMo))
+                return null;
+
+            var currentNode = RootNode;
+            ManagedObject? currentElementMo = null;
+
+            foreach (var index in traversalPath)
+            {
+                var childNode = currentNode?[index];
+                currentElementMo = TryGetMenuDataElement(currentArrayMo, index);
+                if (!IsValidManagedObject(currentElementMo))
+                    return null;
+
+                currentArrayMo = childNode?.Snapshot?.OriginalChildDataMo ?? TryGetChildDataArray(currentElementMo);
+                currentNode = childNode;
+            }
+
+            return currentElementMo?.As<app.training.TrainingMenuData>();
+        }
+    }
+
+    /// <summary>
+    ///     Retrieves the original unmodified <c>_ChildData</c> array for the element at the specified traversal path
+    ///     without cloning or mutating native <see cref="app.training.TrainingMenuData" /> instances.
+    /// </summary>
+    public static app.training.TrainingMenuData_Array1D? GetOriginalChildData(List<int> traversalPath)
+    {
+        lock (ModificationLock)
+        {
+            var currentArrayMo = RootNode.OriginalMenuDataMo ?? TryGetUIDataMo();
+            if (!IsValidManagedObject(currentArrayMo))
+                return null;
+
+            var currentNode = RootNode;
+
+            foreach (var index in traversalPath)
+            {
+                var childNode = currentNode?[index];
+                if (childNode?.Snapshot?.OriginalChildDataMo != null)
+                {
+                    currentArrayMo = childNode.Snapshot.OriginalChildDataMo;
+                }
+                else
+                {
+                    var currentElementMo = TryGetMenuDataElement(currentArrayMo, index);
+                    if (!IsValidManagedObject(currentElementMo))
+                        return null;
+
+                    currentArrayMo = TryGetChildDataArray(currentElementMo);
+                }
+
+                currentNode = childNode;
+            }
+
+            return IsValidManagedObject(currentArrayMo)
+                ? currentArrayMo!.As<app.training.TrainingMenuData_Array1D>()
+                : null;
+        }
     }
 
     [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
@@ -63,7 +285,14 @@ public static class PauseMenuManager
 
             if (TryGetUIDataMo() != null)
             {
-                RebuildUI();
+                try
+                {
+                    RebuildUI();
+                }
+                catch (Exception ex)
+                {
+                    API.LogError($"[PauseMenuManager] RebuildUI failed: {ex}");
+                }
             }
             else
             {
@@ -72,7 +301,8 @@ public static class PauseMenuManager
                         singleUseRequest.ReleaseClaim();
 
                 ModificationRequestPaths.Clear();
-                RootNode.Clear();
+                RootNode.Clear(PendingDisposals);
+                FlushPendingDisposals();
                 FunctionTypeRegistry.Clear();
             }
         }
@@ -107,34 +337,37 @@ public static class PauseMenuManager
             // ------------------------------------------
             // PRE-ORDER / TRAVERSAL PHASE
             // ------------------------------------------
-            // Restore the original fields of the current element from the cached element before applying any modifications
+            // Restore the original fields/children of the current element from the C# snapshot before applying modifications
             if (childIterator == 0)
             {
                 if (currentNode == RootNode)
                 {
-                    if (currentNode.CachedElement != null)
+                    if (currentNode.OriginalMenuDataMo != null)
                     {
-                        // Only release childArrayMo if it was a custom array from a previous rebuild, not the cached original
-                        if (childArrayMo != null && childArrayMo.GetAddress() != currentNode.CachedElement.GetAddress())
-                            childArrayMo.ReleaseIfGlobalized();
+                        if (currentNode.CustomChildArrayMo != null)
+                        {
+                            SetUIDataMo(currentNode.OriginalMenuDataMo);
+                            currentNode.ReleaseCustomChildArray();
+                        }
 
-                        SetUIDataMo(currentNode.CachedElement);
-                        childArrayMo = currentNode.CachedElement;
+                        childArrayMo = currentNode.OriginalMenuDataMo;
                     }
                 }
-                else if (currentNode.CachedElement != null && currentElementMo != null)
+                else if (currentNode.Snapshot != null && currentElementMo != null)
                 {
-                    if (childArrayMo != null)
+                    if (currentNode.HasAppliedFieldOverride)
                     {
-                        var cachedChildArrayMo =
-                            (currentNode.CachedElement as IObject)?.GetField("_ChildData") as ManagedObject;
-                        if (cachedChildArrayMo == null || childArrayMo.GetAddress() != cachedChildArrayMo.GetAddress())
-                            childArrayMo.ReleaseIfGlobalized();
+                        currentNode.Snapshot.RestoreFields(currentElementMo);
+                        currentNode.HasAppliedFieldOverride = false;
                     }
 
-                    var typeDef = app.training.TrainingMenuData.REFType;
-                    currentElementMo.CopyFieldsFrom(currentNode.CachedElement, typeDef);
-                    childArrayMo = (currentElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
+                    if (currentNode.CustomChildArrayMo != null)
+                    {
+                        currentNode.Snapshot.RestoreChildData(currentElementMo);
+                        currentNode.ReleaseCustomChildArray();
+                    }
+
+                    childArrayMo = currentNode.Snapshot.OriginalChildDataMo ?? TryGetChildDataArray(currentElementMo);
                 }
             }
 
@@ -148,12 +381,18 @@ public static class PauseMenuManager
                 var childIndex = childPair.Index;
                 var childNode = childPair.Node;
 
-                // Get the child element MO from the array
-                var childArraySys = childArrayMo?.As<_System.Array>();
-                var childElementMo = childArraySys?.GetValue(childIndex) as ManagedObject;
+                // Get the child element MO from the array safely
+                var childElementMo = TryGetMenuDataElement(childArrayMo, childIndex);
+                if (childElementMo == null)
+                {
+                    if (childNode.HasModifications || childNode.Children.Count > 0)
+                        API.LogWarning(
+                            $"[PauseMenuManager] Skipping missing or invalid child element at index {childIndex} during UI rebuild.");
+                    continue;
+                }
 
-                // Get the child Game Array MO
-                var childGameArrayMo = (childElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
+                // Get the child Game Array MO (prefer snapshot original if present)
+                var childGameArrayMo = childNode.Snapshot?.OriginalChildDataMo ?? TryGetChildDataArray(childElementMo);
 
                 // Push CHILD node onto the stack
                 nodeStack.Push((childNode, childElementMo, childGameArrayMo, 0));
@@ -163,25 +402,23 @@ public static class PauseMenuManager
             // ------------------------------------------
             else
             {
-                if (currentNode.CachedElement != null && (currentNode == RootNode || currentElementMo != null))
-                {
-                    var hasModifications = currentNode.ReorderRequest != null ||
-                                           currentNode.FieldOverrideRequest != null ||
-                                           currentNode.Appends.Count > 0 ||
-                                           currentNode.Removals.Count > 0 ||
-                                           currentNode.Hooks.Count > 0;
+                currentNode.PruneEmptyChildren();
 
-                    if (!hasModifications)
+                if (currentNode.HasSnapshot && (currentNode == RootNode || currentElementMo != null))
+                {
+                    if (!currentNode.HasModifications)
                     {
-                        currentNode.CachedElement.ReleaseIfGlobalized();
-                        currentNode.CachedElement = null;
+                        currentNode.ClearSnapshot();
                         continue;
                     }
 
                     var currentElement = currentElementMo?.As<app.training.TrainingMenuData>();
 
                     if (currentNode.FieldOverrideRequest != null && currentElementMo != null)
+                    {
                         currentNode.FieldOverrideRequest.ApplyOverrides(currentElementMo);
+                        currentNode.HasAppliedFieldOverride = true;
+                    }
 
                     if (currentNode.Hooks.Count > 0 && currentElement != null)
                     {
@@ -249,10 +486,14 @@ public static class PauseMenuManager
                             SetUIDataMo(newArrMo);
                         else
                             currentElement!.ChildData = newArr;
+
+                        currentNode.CustomChildArrayMo = newArrMo;
                     }
                 }
             }
         }
+
+        FlushPendingDisposals();
     }
 
     public static void RegisterModification(List<int> traversalPath, IUIModificationRequest modificationRequest)
@@ -261,15 +502,14 @@ public static class PauseMenuManager
         {
             var currentNode = RootNode;
             // If RootNode was already modified, start traversal from the cached original _MenuData array
-            var gameUIDataMo = RootNode.CachedElement ?? GetUIDataMo();
+            var gameUIDataMo = RootNode.OriginalMenuDataMo ?? GetUIDataMo();
             ManagedObject? targetElementMo = null;
 
             // Traverse down to the target node (runs 0 times if traversalPath is empty)
             foreach (var index in traversalPath)
             {
-                var gameUIDataArray = gameUIDataMo?.As<_System.Array>()
-                                      ?? throw new InvalidCastException(
-                                          "UIData is not a valid array. Cannot traverse.");
+                if (!IsValidManagedObject(gameUIDataMo))
+                    throw new InvalidCastException("UIData is not a valid array. Cannot traverse.");
 
                 var childNode = currentNode[index];
                 if (childNode == null)
@@ -278,34 +518,27 @@ public static class PauseMenuManager
                     currentNode[index] = childNode;
                 }
 
-                targetElementMo = childNode.CachedElement
-                                  ?? gameUIDataArray.GetValue(index) as ManagedObject
+                targetElementMo = TryGetMenuDataElement(gameUIDataMo, index)
                                   ?? throw new InvalidOperationException(
-                                      $"Element at index {index} is null or not a ManagedObject. Cannot copy fields." +
-                                      $"Traversal path is {string.Join(", ", traversalPath)} and request ${modificationRequest}.");
+                                      $"Element at index {index} is null or not a valid TrainingMenuData ManagedObject. Cannot snapshot fields. " +
+                                      $"Traversal path is {string.Join(", ", traversalPath)} and request {modificationRequest}.");
 
-                gameUIDataMo = (targetElementMo as IObject)?.GetField("_ChildData") as ManagedObject;
+                gameUIDataMo = childNode.Snapshot?.OriginalChildDataMo ?? TryGetChildDataArray(targetElementMo);
                 currentNode = childNode;
             }
 
-            // Cache the original data on the target node if not cached yet
-            if (currentNode.CachedElement == null)
+            // Capture a pure C# snapshot of the original data without cloning native TrainingMenuData instances
+            if (!currentNode.HasSnapshot)
             {
                 if (currentNode == RootNode)
                 {
-                    // For RootNode, cache the original _MenuData array itself
                     var originalMenuDataMo = GetUIDataMo()
                                              ?? throw new InvalidOperationException("_MenuData is null.");
-                    originalMenuDataMo.Globalize();
-                    RootNode.CachedElement = originalMenuDataMo;
+                    RootNode.OriginalMenuDataMo = originalMenuDataMo;
                 }
                 else
                 {
-                    var typeDef = app.training.TrainingMenuData.REFType;
-                    var elementCopyMo = typeDef.CreateInstance(0);
-                    elementCopyMo.Globalize();
-                    elementCopyMo.CopyFieldsFrom(targetElementMo!, typeDef);
-                    currentNode.CachedElement = elementCopyMo;
+                    currentNode.Snapshot = TrainingMenuDataSnapshot.Capture(targetElementMo!);
                 }
             }
 
@@ -370,13 +603,13 @@ public static class PauseMenuManager
                 currentNode.ClearReorderRequest();
                 break;
             case PauseMenuAppendElementsRequest appendRequest:
-                currentNode.ClearAppendRequest(appendRequest);
+                currentNode.ClearAppendRequest(appendRequest, PendingDisposals);
                 break;
             case RemoveElementsRequest removeRequest:
                 currentNode.ClearRemoveRequest(removeRequest);
                 break;
             case FieldOverrideRequest:
-                currentNode.ClearFieldOverrideRequest();
+                currentNode.ClearFieldOverrideRequest(PendingDisposals);
                 break;
             case IUIHookRequest hookRequest:
                 currentNode.ClearDHookRequest(hookRequest);
@@ -400,12 +633,20 @@ public static class PauseMenuManager
                 if (UnregisterModificationCore(request))
                     _isDirty = true;
 
-            if ((_isDirty || RootNode.CachedElement != null || RootNode.Children.Count > 0) && TryGetUIDataMo() != null)
-                RebuildUI();
+            if ((_isDirty || RootNode.HasSnapshot || RootNode.Children.Count > 0) && TryGetUIDataMo() != null)
+                try
+                {
+                    RebuildUI();
+                }
+                catch (Exception ex)
+                {
+                    API.LogError($"[PauseMenuManager] RebuildUI during ClearTrainingPauseMenuHooks failed: {ex}");
+                }
 
             _isDirty = false;
             ModificationRequestPaths.Clear();
-            RootNode.Clear();
+            RootNode.Clear(PendingDisposals);
+            FlushPendingDisposals();
 
             // Clear all registered custom function types and their associated delegates
             FunctionTypeRegistry.Clear();
@@ -417,12 +658,124 @@ public static class PauseMenuManager
         }
     }
 
+    private sealed class TrainingMenuDataSnapshot
+    {
+        private TrainingMenuDataSnapshot(ManagedObject? originalChildDataMo)
+        {
+            OriginalChildDataMo = originalChildDataMo;
+        }
+
+        public app.training.ItemType Type { get; init; }
+        public bool IsEnabled { get; init; }
+        public bool IsCantFocus { get; init; }
+        public bool IsForceFocus { get; init; }
+        public bool IsNotFocusFunc { get; init; }
+        public app.InputAssign.Digital.Id NextButton { get; init; }
+        public app.InputAssign.Digital.Id PrevButton { get; init; }
+        public Guid MessageID { get; init; }
+        public Guid SubMessageID { get; init; }
+        public Guid GuideMessage { get; init; }
+        public Guid GuideMessageID { get; init; }
+        public app.InputAssign.Digital.Id GuidIcon { get; init; }
+        public app.InputAssign.Digital.Id GuidAddIcon { get; init; }
+        public int LimitValueX { get; init; }
+        public int LimitValueY { get; init; }
+        public int Interval { get; init; }
+        public int IntervalOption { get; init; }
+        public Guid EndWordsGuid { get; init; }
+        public int SlotID { get; init; }
+        public app.training.eVisibleCase VisibleCase { get; init; }
+        public ManagedObject? OriginalChildDataMo { get; }
+
+        public static TrainingMenuDataSnapshot Capture(ManagedObject elementMo)
+        {
+            var element = elementMo.As<app.training.TrainingMenuData>()
+                          ?? throw new InvalidOperationException("Failed to cast ManagedObject to TrainingMenuData.");
+            var limit = element.LimitValue;
+
+            return new TrainingMenuDataSnapshot(TryGetChildDataArray(elementMo))
+            {
+                Type = element.Type,
+                IsEnabled = element.IsEnabled,
+                IsCantFocus = element.IsCantFocus,
+                IsForceFocus = element.IsForceFocus,
+                IsNotFocusFunc = element.IsNotFocusFunc,
+                NextButton = element.NextButton,
+                PrevButton = element.PrevButton,
+                MessageID = TryReadGuidField(elementMo, MessageIdField),
+                SubMessageID = TryReadGuidField(elementMo, SubMessageIdField),
+                GuideMessage = TryReadGuidField(elementMo, GuideMessageField),
+                GuideMessageID = TryReadGuidField(elementMo, GuideMessageIdField),
+                GuidIcon = element.GuidIcon,
+                GuidAddIcon = element.GuidAddIcon,
+                LimitValueX = limit.x,
+                LimitValueY = limit.y,
+                Interval = element.Interval,
+                IntervalOption = element._Interval_Option,
+                EndWordsGuid = TryReadGuidField(elementMo, EndWordsGuidField),
+                SlotID = element.SlotID,
+                VisibleCase = element.VisibleCase
+            };
+        }
+
+        public void RestoreFields(ManagedObject elementMo)
+        {
+            var element = elementMo.As<app.training.TrainingMenuData>();
+            if (element == null) return;
+
+            element.Type = Type;
+            element.IsEnabled = IsEnabled;
+            element.IsCantFocus = IsCantFocus;
+            element.IsForceFocus = IsForceFocus;
+            element.IsNotFocusFunc = IsNotFocusFunc;
+            element.NextButton = NextButton;
+            element.PrevButton = PrevButton;
+            element.GuidIcon = GuidIcon;
+            element.GuidAddIcon = GuidAddIcon;
+            element.Interval = Interval;
+            element._Interval_Option = IntervalOption;
+            element.SlotID = SlotID;
+            element.VisibleCase = VisibleCase;
+
+            elementMo.SetGuidField("_MessageID", MessageID);
+            elementMo.SetGuidField("_SubMessageID", SubMessageID);
+            elementMo.SetGuidField("_GuideMessage", GuideMessage);
+            elementMo.SetGuidField("_GuideMessageID", GuideMessageID);
+            elementMo.SetGuidField("_EndWordsGuid", EndWordsGuid);
+
+            var limit = via.Int2.REFType.CreateValueType().As<via.Int2>();
+            limit.x = LimitValueX;
+            limit.y = LimitValueY;
+            element.LimitValue = limit;
+        }
+
+        public void RestoreChildData(ManagedObject elementMo)
+        {
+            var childDataField = TrainingMenuDataChildDataField;
+            if (childDataField == null) return;
+
+            var targetAddr = elementMo.GetAddress();
+            var rawPtr = childDataField.GetDataRaw(targetAddr, false);
+            var originalAddr = OriginalChildDataMo?.GetAddress() ?? 0;
+
+            if (rawPtr != 0 && (ulong)Marshal.ReadIntPtr((IntPtr)rawPtr) == originalAddr)
+                return;
+
+            childDataField.SetDataBoxed(targetAddr, OriginalChildDataMo, false);
+        }
+    }
+
     private class UICachedDataNode(ManagedObject? cachedElement)
     {
         private static readonly Comparer<(int index, UICachedDataNode node)> Comparer =
             Comparer<(int index, UICachedDataNode node)>.Create((a, b) => a.index.CompareTo(b.index));
 
-        public ManagedObject? CachedElement { get; set; } = cachedElement;
+        public ManagedObject? OriginalMenuDataMo { get; set; } = cachedElement;
+        public TrainingMenuDataSnapshot? Snapshot { get; set; }
+        public bool HasAppliedFieldOverride { get; set; }
+        public ManagedObject? CustomChildArrayMo { get; set; }
+        public bool HasSnapshot => OriginalMenuDataMo != null || Snapshot != null;
+
         private List<(int, UICachedDataNode)> ChildNodes { get; } = []; // child nodes for the tree structure
         public System.Collections.Generic.IReadOnlyList<(int Index, UICachedDataNode Node)> Children => ChildNodes;
         public ReorderRequest? ReorderRequest { get; private set; } // optional reorder request
@@ -433,6 +786,13 @@ public static class PauseMenuManager
         public System.Collections.Generic.IReadOnlyList<RemoveElementsRequest> Removals => RemoveRequests;
         private List<IUIHookRequest> HookRequests { get; } = []; // list of hook requests
         public System.Collections.Generic.IReadOnlyList<IUIHookRequest> Hooks => HookRequests;
+
+        public bool HasModifications =>
+            ReorderRequest != null ||
+            FieldOverrideRequest != null ||
+            AppendRequests.Count > 0 ||
+            RemoveRequests.Count > 0 ||
+            HookRequests.Count > 0;
 
         public UICachedDataNode? this[int index]
         {
@@ -453,6 +813,32 @@ public static class PauseMenuManager
                 ChildNodes[match] = (index, childNode);
             else
                 ChildNodes.Insert(~match, (index, childNode));
+        }
+
+        public void ClearSnapshot()
+        {
+            OriginalMenuDataMo = null;
+            Snapshot = null;
+            HasAppliedFieldOverride = false;
+        }
+
+        public void ReleaseCustomChildArray()
+        {
+            CustomChildArrayMo?.ReleaseIfGlobalized();
+            CustomChildArrayMo = null;
+        }
+
+        public void PruneEmptyChildren()
+        {
+            for (var i = ChildNodes.Count - 1; i >= 0; i--)
+            {
+                var child = ChildNodes[i].Item2;
+                if (!child.HasModifications &&
+                    !child.HasSnapshot &&
+                    child.CustomChildArrayMo == null &&
+                    child.ChildNodes.Count == 0)
+                    ChildNodes.RemoveAt(i);
+            }
         }
 
         public bool RequestReorder(ReorderRequest reorderRequest)
@@ -480,10 +866,14 @@ public static class PauseMenuManager
             return true;
         }
 
-        public void ClearFieldOverrideRequest()
+        public void ClearFieldOverrideRequest(List<Action> pendingDisposals)
         {
-            FieldOverrideRequest?.Reset();
-            FieldOverrideRequest = null;
+            if (FieldOverrideRequest != null)
+            {
+                var overrideReq = FieldOverrideRequest;
+                pendingDisposals.Add(overrideReq.Reset);
+                FieldOverrideRequest = null;
+            }
         }
 
         public bool RequestAppend(PauseMenuAppendElementsRequest appendRequest)
@@ -492,10 +882,10 @@ public static class PauseMenuManager
             return true;
         }
 
-        public void ClearAppendRequest(PauseMenuAppendElementsRequest appendRequest)
+        public void ClearAppendRequest(PauseMenuAppendElementsRequest appendRequest, List<Action> pendingDisposals)
         {
-            appendRequest.Reset();
-            AppendRequests.Remove(appendRequest);
+            if (AppendRequests.Remove(appendRequest))
+                pendingDisposals.Add(appendRequest.Reset);
         }
 
         public bool RequestRemove(RemoveElementsRequest removeRequest)
@@ -536,19 +926,19 @@ public static class PauseMenuManager
         ///     Clears the cached element and all child nodes, as well as any registered modification requests (reorder, override,
         ///     append, remove, hook) for this node and its children.
         /// </summary>
-        public void Clear()
+        public void Clear(List<Action> pendingDisposals)
         {
-            foreach (var (_, childNode) in ChildNodes) childNode.Clear();
+            foreach (var (_, childNode) in ChildNodes) childNode.Clear(pendingDisposals);
             ChildNodes.Clear();
 
             ClearReorderRequest();
-            ClearFieldOverrideRequest();
-            foreach (var appendRequest in AppendRequests.ToList()) ClearAppendRequest(appendRequest);
+            ClearFieldOverrideRequest(pendingDisposals);
+            foreach (var appendRequest in AppendRequests.ToList()) ClearAppendRequest(appendRequest, pendingDisposals);
             RemoveRequests.Clear();
             foreach (var hookRequest in HookRequests.ToList()) ClearDHookRequest(hookRequest);
 
-            CachedElement?.ReleaseIfGlobalized();
-            CachedElement = null;
+            ReleaseCustomChildArray();
+            ClearSnapshot();
         }
     }
 }

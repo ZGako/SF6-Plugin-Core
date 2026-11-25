@@ -31,8 +31,8 @@ public static class SubMenuSpinnerHook
     private static readonly ThreadLocal<Queue<app.training.UIFlowTrainingMenu.Param.ViewData>> PerThreadViewData =
         new(() => new Queue<app.training.UIFlowTrainingMenu.Param.ViewData>(14));
 
-    // Since this is only affected by UI stuff, there is no thread-related race condition
-    // (everything we deal with is serialized on a single thread).
+    private static readonly Lock ViewDataLock = new();
+
     private static readonly OrderedDictionary<ulong, app.training.UIFlowTrainingMenu.Param.ViewData>
         ViewDataForUIPartAddress = new();
 
@@ -93,8 +93,10 @@ public static class SubMenuSpinnerHook
 
             // clear the list just in case something in the flow broke
             PerThreadViewData.Value?.Clear();
-            // clear the dictionary as well (could be done in Initialize, but both get called in the same parts so it doesn't really matter)
-            ViewDataForUIPartAddress.Clear();
+            lock (ViewDataLock)
+            {
+                ViewDataForUIPartAddress.Clear();
+            }
 
             // explicit for loop as foreach sometimes breaks
             for (var i = 0; i < paramData.ViewDataList.Count; i++)
@@ -161,11 +163,18 @@ public static class SubMenuSpinnerHook
                 // pop the queue, read its values and record the address mapping for all elements
                 // so row indices stay aligned with ViewDataList even when preexisting game elements are present
                 viewData = PerThreadViewData.Value.Dequeue();
-                ViewDataForUIPartAddress.TryAdd(address, viewData);
+                lock (ViewDataLock)
+                {
+                    ViewDataForUIPartAddress.TryAdd(address, viewData);
+                }
             }
-            else if (!ViewDataForUIPartAddress.TryGetValue(address, out viewData))
+            else
             {
-                return PreHookResult.Continue;
+                lock (ViewDataLock)
+                {
+                    if (!ViewDataForUIPartAddress.TryGetValue(address, out viewData))
+                        return PreHookResult.Continue;
+                }
             }
 
             var data = viewData.Data;
@@ -303,8 +312,14 @@ public static class SubMenuSpinnerHook
 
         try
         {
-            if (pendingIndex < 0 || pendingIndex >= ViewDataForUIPartAddress.Count) return;
-            var (address, viewData) = ViewDataForUIPartAddress.GetAt(pendingIndex);
+            ulong address;
+            app.training.UIFlowTrainingMenu.Param.ViewData viewData;
+            lock (ViewDataLock)
+            {
+                if (pendingIndex < 0 || pendingIndex >= ViewDataForUIPartAddress.Count) return;
+                (address, viewData) = ViewDataForUIPartAddress.GetAt(pendingIndex);
+            }
+
             var data = viewData.Data;
 
             if (!FunctionTypeRegistry.TryGetFunctionId((int)data.FuncType, out var functionId) ||
@@ -351,7 +366,11 @@ public static class SubMenuSpinnerHook
     internal static void Clear()
     {
         CustomSubMenuSpinners.Clear();
-        ViewDataForUIPartAddress.Clear();
+        lock (ViewDataLock)
+        {
+            ViewDataForUIPartAddress.Clear();
+        }
+
         PerThreadViewData.Value?.Clear();
         StringPool.Clear();
     }

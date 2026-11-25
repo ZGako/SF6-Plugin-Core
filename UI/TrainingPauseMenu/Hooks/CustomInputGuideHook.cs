@@ -218,6 +218,15 @@ public static class CustomInputGuideHook
     [Callback(typeof(LateUpdateBehavior), CallbackType.Post)]
     public static void OnLateUpdateBehavior()
     {
+        if (s_remainingAnimationFrames <= 0 && s_previousCustomPanel == null)
+            return;
+
+        if (GameSingletonManager.TrainingManager == null)
+        {
+            HidePreviousPanel();
+            return;
+        }
+
         if (s_remainingAnimationFrames <= 0 || s_referenceNameText == null || s_activeCustomText == null)
             return;
 
