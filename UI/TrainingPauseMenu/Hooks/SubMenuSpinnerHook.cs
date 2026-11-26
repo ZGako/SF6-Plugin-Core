@@ -99,6 +99,8 @@ public static class SubMenuSpinnerHook
     [MethodHook(typeof(app.training.UIFlowTrainingMenu_SpinList.Param), "Initialize", MethodHookType.Pre)]
     public static PreHookResult OnSpinListInitializePre(Span<ulong> args)
     {
+        if (CustomSubMenuSpinners.IsEmpty) return PreHookResult.Continue;
+
         // keep track when an element is being initialized
         s_isInitializing = true;
 
@@ -125,7 +127,7 @@ public static class SubMenuSpinnerHook
     [MethodHook(typeof(app.training.UIFlowTrainingMenu_SpinList.Param), "CreateViewData", MethodHookType.Post)]
     public static void OnCreateViewDataPost(ref ulong retval)
     {
-        if (!s_isInitializing) return;
+        if (!s_isInitializing || CustomSubMenuSpinners.IsEmpty) return;
         try
         {
             // we check the view data in the post, to make sure that our "custom" viewData is present
@@ -206,6 +208,8 @@ public static class SubMenuSpinnerHook
     [MethodHook(typeof(app.UIPartsScrollList), "InitList", MethodHookType.Pre)]
     public static PreHookResult OnInitList(Span<ulong> args)
     {
+        if (CustomSubMenuSpinners.IsEmpty) return PreHookResult.Continue;
+
         try
         {
             var address = args[1];
@@ -260,6 +264,8 @@ public static class SubMenuSpinnerHook
     [MethodHook(typeof(app.UIPartsSpin), "set_IsDisable", MethodHookType.Pre)]
     public static PreHookResult OnSetDisablePre(Span<ulong> args)
     {
+        if (CustomSubMenuSpinners.IsEmpty) return PreHookResult.Continue;
+
         try
         {
             var tm = GameSingletonManager.TrainingManager;
@@ -282,7 +288,7 @@ public static class SubMenuSpinnerHook
             {
                 customTexture = selectItem.GetGuiChild(customTextureName).As<via.gui.Texture>();
             }
-            catch (InvalidOperationException e)
+            catch (InvalidOperationException)
             {
             }
 
@@ -363,6 +369,8 @@ public static class SubMenuSpinnerHook
         MethodHookType.Pre)]
     public static PreHookResult OnUpdateSpinBoxPre(Span<ulong> args)
     {
+        if (CustomSubMenuSpinners.IsEmpty) return PreHookResult.Continue;
+
         // args[2] corresponds to the first parameter of the method
         s_pendingIndex = (int)args[2];
         s_pendingIsAction = args[3] == 1;

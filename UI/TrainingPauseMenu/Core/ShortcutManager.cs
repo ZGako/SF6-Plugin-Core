@@ -352,6 +352,11 @@ public static class ShortcutManager
 
         lock (ShortcutLock)
         {
+            if (ActiveRegistrations.Count == 0 && AppliedRegistrations.Count == 0 &&
+                _originalSettingArrayMo == null && _injectedSettingArrayMo == null &&
+                !_hasApplied && !_isDirty)
+                return;
+
             removed = [.. ActiveRegistrations];
             foreach (var registration in removed)
                 try
