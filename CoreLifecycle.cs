@@ -11,6 +11,7 @@ using SF6_Plugin_Core.Services;
 using SF6_Plugin_Core.UI;
 using SF6_Plugin_Core.UI.Localization;
 using SF6_Plugin_Core.UI.OptionsSettings.Core;
+using SF6_Plugin_Core.UI.ReplayPauseMenu.Core;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core;
@@ -44,6 +45,7 @@ public static class CoreLifecycle
         // so any remaining registered modifications can be cleanly restored first
         PauseMenuManager.ClearTrainingPauseMenuHooks();
         OptionsSettingsManager.ClearOptionsSettingsHooks();
+        ReplayPauseMenuManager.ClearReplayPauseMenuHooks();
         ShortcutManager.ClearShortcuts();
 
         // clear services

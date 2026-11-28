@@ -1,3 +1,4 @@
+using SF6_Plugin_Core.UI.ReplayPauseMenu.Core;
 using SF6_Plugin_Core.UI.TrainingPauseMenu.Core;
 
 namespace SF6_Plugin_Core.Services;
@@ -14,6 +15,7 @@ public static class GameSingletonManager
 
     private static readonly GameSingletonTypes[] AllSingletonTypes = Enum.GetValues<GameSingletonTypes>();
     private static volatile bool _isReleasingTrainingManager;
+    private static volatile bool _isReleasingReplayUICtrl;
 
     // Publicly accessible singleton instances
 
@@ -98,6 +100,24 @@ public static class GameSingletonManager
     }
 
     /// <summary>
+    ///     Gets the active <see cref="app.esports.ReplayUICtrl" /> from <see cref="GuiManager" />, or
+    ///     <see langword="null" /> outside replay mode or while teardown is in progress.
+    /// </summary>
+    public static app.esports.ReplayUICtrl? ReplayUICtrl
+    {
+        get
+        {
+            if (_isReleasingReplayUICtrl) return null;
+            if (field != null) return field;
+
+            var ctrl = GuiManager?.Esports?.GetReplayUICtrl();
+            if (ctrl != null) field = ctrl;
+            return field;
+        }
+        private set;
+    }
+
+    /// <summary>
     ///     Gets the game's <see cref="app.OptionManager" /> singleton once <c>mInitEndFlag</c> is true and
     ///     <c>UnitLists</c> is non-null, or <see langword="null" /> before options data has loaded.
     /// </summary>
@@ -176,6 +196,7 @@ public static class GameSingletonManager
             GameSingletonTypes.GuiManager => GuiManager != null,
             GameSingletonTypes.OptionManager => OptionManager != null,
             GameSingletonTypes.ShortcutSetting => ShortcutSetting != null,
+            GameSingletonTypes.ReplayUICtrl => ReplayUICtrl != null,
             _ => false
         };
     }
@@ -518,9 +539,78 @@ public static class GameSingletonManager
         return PreHookResult.Continue;
     }
 
+    /// <summary>
+    ///     Subscribes to the multi-session lifecycle of <see cref="ReplayUICtrl" /> (entering and exiting Replay mode).
+    /// </summary>
+    public static void RegisterReplayUICtrl(Action onReady, Action? onRelease = null)
+    {
+        RegisterSingleton(GameSingletonTypes.ReplayUICtrl, true, onReady, onRelease);
+    }
+
+    /// <summary>
+    ///     Unsubscribes callbacks previously added via <see cref="RegisterReplayUICtrl" />.
+    /// </summary>
+    public static void UnregisterReplayUICtrl(Action onReady, Action? onRelease = null)
+    {
+        if (RegisteredSingletons.TryGetValue(GameSingletonTypes.ReplayUICtrl, out var hooks))
+        {
+            hooks.OnReady -= onReady;
+            if (onRelease != null) hooks.OnRelease -= onRelease;
+        }
+    }
+
+    private static void ReleaseReplayUICtrlState()
+    {
+        _isReleasingReplayUICtrl = true;
+
+        var isReady = SingletonReadyStates.TryGetValue(GameSingletonTypes.ReplayUICtrl, out var ready) && ready;
+        if (!isReady) return;
+
+        if (RegisteredSingletons.TryGetValue(GameSingletonTypes.ReplayUICtrl, out var hooks))
+            try
+            {
+                hooks.InvokeOnRelease();
+            }
+            catch (Exception ex)
+            {
+                API.LogError($"[GameSingletonManager] Exception in ReplayUICtrl OnRelease callback: {ex}");
+            }
+
+        ReplayPauseMenuManager.ClearReplayPauseMenuHooks();
+        ReplayUICtrl = null;
+        SingletonReadyStates[GameSingletonTypes.ReplayUICtrl] = false;
+    }
+
+    [MethodHook(typeof(app.GuiManager.GuiEsportsManager), "RemoveReplayUICtrl", MethodHookType.Pre)]
+    public static PreHookResult OnRemoveReplayUICtrlPre(Span<ulong> args)
+    {
+        ReleaseReplayUICtrlState();
+        return PreHookResult.Continue;
+    }
+
+    [MethodHook(typeof(app.GuiManager.GuiEsportsManager), "RemoveReplayUICtrl", MethodHookType.Post)]
+    public static void OnRemoveReplayUICtrlPost(ref ulong retval)
+    {
+        _isReleasingReplayUICtrl = false;
+    }
+
+    [MethodHook(typeof(app.esports.ReplayUICtrl), "onDestroy", MethodHookType.Pre)]
+    public static PreHookResult OnReplayUICtrlDestroyPre(Span<ulong> args)
+    {
+        ReleaseReplayUICtrlState();
+        return PreHookResult.Continue;
+    }
+
+    [MethodHook(typeof(app.esports.ReplayUICtrl), "onDestroy", MethodHookType.Post)]
+    public static void OnReplayUICtrlDestroyPost(ref ulong retval)
+    {
+        _isReleasingReplayUICtrl = false;
+    }
+
     internal static void Clear()
     {
         _isReleasingTrainingManager = false;
+        _isReleasingReplayUICtrl = false;
         SingletonReadyStates.Clear();
         RegisteredSingletons.Clear();
         UIAgentManager = null;
@@ -532,6 +622,7 @@ public static class GameSingletonManager
         GuiManager = null;
         OptionManager = null;
         ShortcutSetting = null;
+        ReplayUICtrl = null;
     }
 
     private enum GameSingletonTypes
@@ -544,7 +635,8 @@ public static class GameSingletonManager
         ResourceManager, // technically not a singleton, but I'd like to have a callback to it
         GuiManager,
         OptionManager,
-        ShortcutSetting
+        ShortcutSetting,
+        ReplayUICtrl
 
         // Add others here later
     }
